@@ -48,6 +48,15 @@ target/
 # pyenv
 .python-version
 
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+yarn-debug.log
+.npm/
+.pnp/
+.pnp.js
+
 # macOS files
 .DS_Store
 .AppleDouble
@@ -71,8 +80,10 @@ blender_testing.blend
 temp/
 *.zip
 *.blend
-memory-bank/
 
 # VSCode
 .vscode/
-.cursor/
+
+# Cursor specific (keep .cursor/rules but ignore other .cursor contents)
+.cursor/*
+!.cursor/rules/

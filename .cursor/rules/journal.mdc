@@ -1,0 +1,59 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+ # Blender Projection System - Project Intelligence
+
+## Project Patterns
+
+### Code Style and Organization
+- The codebase follows a modular structure with clear separation between UI, properties, operators, and visualization
+- Python code uses snake_case for functions and variables, following Blender's API conventions
+- Blender add-on specific patterns:
+  - Registration of classes happens in the register() function of each module
+  - Properties are defined using Blender's PropertyGroup classes
+  - Operators follow the bl_idname and bl_label naming conventions
+
+### Implementation Approaches
+- Bidirectional parameter relationships are managed through update callbacks
+- Visualization relies on Geometry Nodes rather than manual mesh creation
+- Multi-projector management uses collections for organization
+
+### Documentation Standards
+- Code includes docstrings for significant functions and classes
+- User-facing documentation is maintained in the docs/ directory
+- Memory Bank documentation follows a hierarchical structure
+
+## Critical Implementation Details
+
+### Projection Calculations
+- The core relationship between throw distance, image width, and throw ratio is: 
+  `throw_ratio = throw_distance / image_width`
+- When one parameter changes, the others update based on this relationship
+
+### Geometry Nodes Visualization
+- Projection cones are visualized using Geometry Nodes for real-time feedback
+- The aspect ratio of the cone is maintained to match the projection aspect ratio
+
+### Multi-Projector Handling
+- Projectors are organized into collections for efficient management
+- Duplication uses Blender's instance system for performance
+- Overlap detection uses computational geometry to identify intersection areas
+
+## Project Workflow
+
+### Development Process
+- Feature development follows the milestones defined in the project brief
+- Testing is performed within Blender after each significant change
+- Documentation is updated alongside code changes
+
+### Memory Bank Maintenance
+- Memory Bank files are organized hierarchically with projectbrief.md as the foundation
+- activeContext.md and progress.md are updated most frequently to reflect current state
+- New patterns or insights are added to journal.mdc as they are discovered
+
+## User Preferences
+- Code should maintain compatibility with Blender 4.2+
+- Documentation should be clear and accessible to AV professionals who may not be Blender experts
+- Performance is a key concern, especially with multi-projector setups

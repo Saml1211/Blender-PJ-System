@@ -1,0 +1,97 @@
+.project-manager {
+  margin-top: 15px;
+  padding: 15px;
+  background-color: rgba(0, 0, 0, 0.02);
+  border-radius: 4px;
+}
+
+.project-manager h3 {
+  margin: 0 0 10px 0;
+  font-size: 16px;
+  color: var(--text-color);
+  border-bottom: 1px solid var(--panel-border);
+  padding-bottom: 5px;
+}
+
+.project-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.project-buttons button {
+  flex: 1;
+  min-width: 120px;
+  padding: 8px;
+  background-color: var(--input-background);
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.project-buttons button:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.backups-list {
+  margin-top: 15px;
+  padding: 10px;
+  background-color: var(--panel-background);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+}
+
+.backups-list h4 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  color: var(--text-color);
+}
+
+.backups-list ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.backups-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.backups-list li:last-child {
+  border-bottom: none;
+}
+
+.backups-list li span {
+  font-size: 14px;
+  color: var(--text-color);
+}
+
+.backups-list li button {
+  padding: 4px 8px;
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.close-button {
+  margin-top: 10px;
+  padding: 6px 12px;
+  background-color: var(--secondary-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  width: 100%;
+}

@@ -1,0 +1,117 @@
+.multi-projector-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.collection-list {
+  margin-bottom: 15px;
+  max-height: 150px;
+  overflow-y: auto;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+}
+
+.collection-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--panel-border);
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.collection-item:last-child {
+  border-bottom: none;
+}
+
+.collection-item:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.collection-item.active {
+  background-color: rgba(42, 127, 255, 0.1);
+  border-left: 3px solid var(--primary-color);
+}
+
+.collection-name {
+  font-size: 14px;
+  color: var(--text-color);
+  flex: 1;
+}
+
+.collection-info {
+  font-size: 12px;
+  color: var(--secondary-color);
+  margin-right: 10px;
+}
+
+.collection-details {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.apply-button {
+  padding: 6px 12px;
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  margin-top: 10px;
+  transition: background-color 0.2s;
+}
+
+.apply-button:hover {
+  background-color: #1a6cd9;
+}
+
+.collection-projectors,
+.available-projectors {
+  max-height: 150px;
+  overflow-y: auto;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+}
+
+.collection-projector-item,
+.available-projector-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.collection-projector-item:last-child,
+.available-projector-item:last-child {
+  border-bottom: none;
+}
+
+.add-button.small {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.info-text {
+  font-size: 14px;
+  color: var(--secondary-color);
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+
+.detect-button {
+  padding: 6px 12px;
+  background-color: var(--secondary-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.detect-button:hover {
+  background-color: #333;
+}

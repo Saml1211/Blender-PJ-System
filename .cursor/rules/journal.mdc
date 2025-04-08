@@ -1,9 +1,4 @@
----
-description: 
-globs: 
-alwaysApply: true
----
- # Blender Projection System - Project Intelligence
+# Blender Projection System - Project Intelligence
 
 ## Project Patterns
 
@@ -56,4 +51,4 @@ alwaysApply: true
 ## User Preferences
 - Code should maintain compatibility with Blender 4.2+
 - Documentation should be clear and accessible to AV professionals who may not be Blender experts
-- Performance is a key concern, especially with multi-projector setups
+- Performance is a key concern, especially with multi-projector setups 

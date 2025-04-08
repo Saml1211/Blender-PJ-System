@@ -75,3 +75,4 @@ memory-bank/
 
 # VSCode
 .vscode/
+.cursor/

@@ -1,52 +1,50 @@
 import bpy
-
-# Global variable to track update state
-_updating_projection_params = False
+from typing import Any
 
 # Update functions for bidirectional parameter linking
-def update_throw_distance(self, context):
+def update_throw_distance(self: bpy.types.Object, context: bpy.types.Context) -> None:
+    """Update throw ratio when throw distance changes (TR = D/W)"""
     # Prevent recursive updates by checking if we're already updating
-    global _updating_projection_params
-    if _updating_projection_params:
+    if context.scene.pj_update_state.updating:
         return
 
-    _updating_projection_params = True
+    context.scene.pj_update_state.updating = True
     # When throw distance changes, update throw ratio (TR = D/W)
     if self.pj_image_width > 0:
         self.pj_throw_ratio = self.pj_throw_distance / self.pj_image_width
-    _updating_projection_params = False
+    context.scene.pj_update_state.updating = False
 
-def update_image_width(self, context):
+def update_image_width(self: bpy.types.Object, context: bpy.types.Context) -> None:
+    """Update throw ratio when image width changes (TR = D/W)"""
     # Prevent recursive updates
-    global _updating_projection_params
-    if _updating_projection_params:
+    if context.scene.pj_update_state.updating:
         return
 
-    _updating_projection_params = True
+    context.scene.pj_update_state.updating = True
     # When image width changes, update throw ratio (TR = D/W)
     if self.pj_image_width > 0:
         self.pj_throw_ratio = self.pj_throw_distance / self.pj_image_width
-    _updating_projection_params = False
+    context.scene.pj_update_state.updating = False
 
-def update_throw_ratio(self, context):
+def update_throw_ratio(self: bpy.types.Object, context: bpy.types.Context) -> None:
+    """Update image width when throw ratio changes (W = D/TR)"""
     # Prevent recursive updates
-    global _updating_projection_params
-    if _updating_projection_params:
+    if context.scene.pj_update_state.updating:
         return
 
-    _updating_projection_params = True
+    context.scene.pj_update_state.updating = True
     # When throw ratio changes, update image width (W = D/TR)
     if self.pj_throw_ratio > 0:
         self.pj_image_width = self.pj_throw_distance / self.pj_throw_ratio
-    _updating_projection_params = False
+    context.scene.pj_update_state.updating = False
 
 # Collection functionality
-def update_active_collection(self, context):
-    # Callback for when active collection changes
+def update_active_collection(self: bpy.types.Scene, context: bpy.types.Context) -> None:
+    """Callback for when active collection changes"""
     pass
 
-def get_collection_items(self, context):
-    # Get list of collections for dropdown menu
+def get_collection_items(self: bpy.types.Scene, context: bpy.types.Context) -> list[tuple[str, str, str, int]]:
+    """Get list of collections for dropdown menu"""
     items = []
 
     if hasattr(context.scene, 'pj_projector_collections'):
@@ -59,6 +57,15 @@ def get_collection_items(self, context):
 
     return items
 
+# Property group for update state tracking
+class PJ_PG_UpdateState(bpy.types.PropertyGroup):
+    """Tracks whether projection parameters are currently being updated to prevent recursion"""
+    updating: bpy.props.BoolProperty(
+        name="Updating",
+        description="Whether projection parameters are currently being updated",
+        default=False
+    )
+
 # Property group for projector collections
 class PJ_PG_ProjectorCollectionV2(bpy.types.PropertyGroup):
     name: bpy.props.StringProperty(
@@ -67,8 +74,17 @@ class PJ_PG_ProjectorCollectionV2(bpy.types.PropertyGroup):
         default=""
     )
 
-def register():
-    # Register the property group first
+def register() -> None:
+    """Register property groups and custom properties"""
+    # Register property groups first
+    try:
+        bpy.utils.register_class(PJ_PG_UpdateState)
+    except ValueError as e:
+        if "already registered" in str(e):
+            print("PJ_PG_UpdateState already registered, skipping registration")
+        else:
+            raise e
+
     try:
         bpy.utils.register_class(PJ_PG_ProjectorCollectionV2)
     except ValueError as e:
@@ -77,6 +93,13 @@ def register():
             print("PJ_PG_ProjectorCollectionV2 already registered, skipping registration")
         else:
             raise e
+
+    # Scene property for update state
+    bpy.types.Scene.pj_update_state = bpy.props.PointerProperty(
+        type=PJ_PG_UpdateState,
+        name="Update State",
+        description="Tracks projection parameter update state"
+    )
 
     # Scene property for unit system
     bpy.types.Scene.pj_unit_system = bpy.props.EnumProperty(
@@ -208,7 +231,10 @@ def register():
         items=get_collection_items
     )
 
-def unregister():
+def unregister() -> None:
+    """Unregister property groups and remove custom properties"""
+    # Remove scene properties
+    del bpy.types.Scene.pj_update_state
     del bpy.types.Scene.pj_unit_system
 
     # Remove custom properties
@@ -232,13 +258,21 @@ def unregister():
     del bpy.types.Scene.pj_active_collection_index
     del bpy.types.Scene.pj_collection_selector
 
-    # Unregister the property group last
+    # Unregister property groups last
     try:
         bpy.utils.unregister_class(PJ_PG_ProjectorCollectionV2)
     except ValueError as e:
         # Class might not be registered, which can happen if it wasn't registered properly
         if "not registered" in str(e):
             print("PJ_PG_ProjectorCollectionV2 not registered, skipping unregistration")
+        else:
+            raise e
+
+    try:
+        bpy.utils.unregister_class(PJ_PG_UpdateState)
+    except ValueError as e:
+        if "not registered" in str(e):
+            print("PJ_PG_UpdateState not registered, skipping unregistration")
         else:
             raise e
 

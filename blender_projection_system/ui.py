@@ -240,12 +240,14 @@ class PJ_OT_set_active_collection(bpy.types.Operator):
         
         return {'FINISHED'}
 
-def register():
+def register() -> None:
+    """Register UI panels and operators"""
     bpy.utils.register_class(PJ_PT_ProjectionPanel)
     bpy.utils.register_class(PJ_PT_ProjectorCollectionsPanel)
     bpy.utils.register_class(PJ_OT_set_active_collection)
 
-def unregister():
+def unregister() -> None:
+    """Unregister UI panels and operators"""
     bpy.utils.unregister_class(PJ_OT_set_active_collection)
     bpy.utils.unregister_class(PJ_PT_ProjectorCollectionsPanel)
     bpy.utils.unregister_class(PJ_PT_ProjectionPanel)

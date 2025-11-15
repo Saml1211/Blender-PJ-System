@@ -659,12 +659,14 @@ def set_projector_as_mapping_source(obj, camera):
         # Ensure the camera is enabled for texture projection
         camera.data.type = 'PERSP'
 
-def register():
+def register() -> None:
+    """Register visualization operators"""
     bpy.utils.register_class(PJ_OT_add_projection_cone)
     bpy.utils.register_class(PJ_OT_create_test_surface)
     bpy.utils.register_class(PJ_OT_setup_projection_mapping)
 
-def unregister():
+def unregister() -> None:
+    """Unregister visualization operators"""
     bpy.utils.unregister_class(PJ_OT_setup_projection_mapping)
     bpy.utils.unregister_class(PJ_OT_create_test_surface)
     bpy.utils.unregister_class(PJ_OT_add_projection_cone)

@@ -27,11 +27,13 @@ modules = [
     # utils,
 ]
 
-def register():
+def register() -> None:
+    """Register all addon modules"""
     for mod in modules:
         mod.register()
 
-def unregister():
+def unregister() -> None:
+    """Unregister all addon modules in reverse order"""
     # Unregister in reverse order
     for mod in reversed(modules):
         mod.unregister()

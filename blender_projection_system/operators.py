@@ -709,7 +709,8 @@ class PJ_OT_align_projector_group(Operator):
 
         return {'FINISHED'}
 
-def register():
+def register() -> None:
+    """Register all operator classes"""
     bpy.utils.register_class(PJ_OT_add_projector)
     bpy.utils.register_class(PJ_OT_test_parameter_linking)
     bpy.utils.register_class(PJ_OT_import_model)
@@ -724,7 +725,8 @@ def register():
     bpy.utils.register_class(PJ_OT_detect_overlapping_projections)
     bpy.utils.register_class(PJ_OT_align_projector_group)
 
-def unregister():
+def unregister() -> None:
+    """Unregister all operator classes"""
     bpy.utils.unregister_class(PJ_OT_align_projector_group)
     bpy.utils.unregister_class(PJ_OT_detect_overlapping_projections)
     bpy.utils.unregister_class(PJ_OT_delete_collection)

@@ -8,33 +8,23 @@ The Blender Projection System is designed to provide AV System Design Engineers 
 - Calculating projector placement and setup parameters
 - Visualizing projection cones and coverage areas
 - Managing multi-projector configurations with edge blending
-- Simulating environmental factors like ambient light and thermal behavior
-- Creating immersive previews with VR/AR integration
+- Model import and environment creation
+- Real-time 3D visualization with Three.js web application
 
 ## Getting Started
 
-- [Installation](installation.md)
-- [Quick Start Guide](quickstart.md)
-- [Basic Concepts](concepts.md)
+Please refer to the [Main README](../README.md) for:
+- Installation instructions
+- Quick start guide
+- Basic usage examples
 
-## Features
+## Available Documentation
 
-- [Core Calculations](features/calculations.md)
-- [Visualization](features/visualization.md)
-- [Multi-Projector Management](features/multi-projector.md)
-- [Environmental Simulation](features/environment.md)
-- [Import/Export](features/import-export.md)
-- [VR/AR Integration](features/xr.md)
-
-## Developer Documentation
-
-- [Architecture](dev/architecture.md)
-- [API Reference](dev/api.md)
-- [Contributing](../CONTRIBUTING.md)
-- [Plugin Development](dev/plugins.md)
+- [User Manual](manual/index.md) - Complete instructions for using the add-on
+- [Feature Reference](features/index.md) - Detailed information about all features
+- [Product Requirements](noindex/prd.md) - Product specifications and roadmap
+- [Contributing Guidelines](../CONTRIBUTING.md) - How to contribute to the project
 
 ## Support
 
-- [FAQ](support/faq.md)
-- [Troubleshooting](support/troubleshooting.md)
-- [GitHub Issues](https://github.com/yourusername/Blender-PJ-System/issues) 
+- [GitHub Issues](https://github.com/Saml1211/Blender-PJ-System/issues) - Report bugs and request features 

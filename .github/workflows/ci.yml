@@ -26,7 +26,7 @@ jobs:
         # exit-zero treats all errors as warnings
         flake8 blender_projection_system --count --exit-zero --max-complexity=10 --max-line-length=79 --statistics
 
-  fake-test-with-blender:
+  test:
     runs-on: ubuntu-latest
     needs: lint
     steps:
@@ -35,8 +35,9 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: '3.10'
-    - name: Run test (simulated)
+    - name: Install dependencies
       run: |
-        echo "Running simulated tests with Blender's Python environment"
-        echo "In a production CI, this would download and run Blender to test the add-on"
-        echo "Test successful" 
+        python -m pip install --upgrade pip
+    - name: Run Python unit tests
+      run: |
+        python -m unittest tests.test_calculations -v 

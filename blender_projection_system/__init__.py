@@ -1,40 +1,77 @@
+"""Projection Planner - curved-wall projector planning for Blender 4.2.
+
+The package is importable outside Blender. When ``bpy`` is unavailable only
+:mod:`blender_projection_system.core` (the pure projection mathematics) is
+loaded, which is what the test suite and any headless tooling use.
+"""
+
 bl_info = {
-    "name": "Projection Planner MVP",
-    "author": "Your Name & AI Assistant",
-    "version": (0, 1, 0),
-    "blender": (4, 2, 0), # Minimum Blender version
-    "location": "View3D > Sidebar > Projection Tab",
-    "description": "MVP for calculating and visualizing projector setups.",
+    "name": "Projection Planner",
+    "author": "Sam Lyndon",
+    "version": (0, 2, 0),
+    "blender": (4, 2, 0),
+    "location": "View3D > Sidebar > Projection",
+    "description": (
+        "Plan ceiling-mounted projector arrays against curved and flat walls: "
+        "throw geometry, footprints, coverage, blend zones and brightness."
+    ),
     "warning": "",
-    "doc_url": "", # Optional: link to documentation
+    "doc_url": "https://github.com/Saml1211/Blender-PJ-System",
+    "tracker_url": "https://github.com/Saml1211/Blender-PJ-System/issues",
     "category": "3D View",
 }
 
-import bpy
+from . import core  # noqa: F401  (pure math, always importable)
 
-# Import modules
-from . import properties
-from . import ui
-from . import operators
-from . import visualization
-# from . import utils # Will be added later
+try:  # pragma: no cover - exercised only inside Blender
+    import bpy
+except ImportError:  # pragma: no cover
+    bpy = None
 
-modules = [
-    properties,
-    ui,
-    operators,
-    visualization,
-    # utils,
-]
+if bpy is not None:  # pragma: no cover - requires Blender
+    from . import operators, properties, ui
 
-def register():
-    for mod in modules:
-        mod.register()
+    # Order matters: properties first, since operators and panels read them.
+    # ``visualization`` registers nothing - it is a helper module imported by
+    # the operators.
+    _MODULES = (properties, operators, ui)
+    _REGISTERED = False
 
-def unregister():
-    # Unregister in reverse order
-    for mod in reversed(modules):
-        mod.unregister()
+    def register():
+        global _REGISTERED
+        if _REGISTERED:
+            return
+        registered = []
+        try:
+            for mod in _MODULES:
+                mod.register()
+                registered.append(mod)
+        except Exception:
+            # Roll back a partial registration so the add-on can be enabled
+            # again after the underlying problem is fixed.
+            for mod in reversed(registered):
+                try:
+                    mod.unregister()
+                except Exception:
+                    pass
+            raise
+        _REGISTERED = True
 
-if __name__ == "__main__":
-    register() 
+    def unregister():
+        global _REGISTERED
+        if not _REGISTERED:
+            return
+        for mod in reversed(_MODULES):
+            try:
+                mod.unregister()
+            except Exception as exc:
+                print(f"[Projection Planner] unregister failed for {mod.__name__}: {exc}")
+        _REGISTERED = False
+
+else:
+
+    def register():
+        raise RuntimeError("Projection Planner requires Blender; bpy is not available")
+
+    def unregister():
+        raise RuntimeError("Projection Planner requires Blender; bpy is not available")

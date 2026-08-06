@@ -1,0 +1,33 @@
+[project]
+name = "blender-projection-planner"
+version = "0.2.0"
+description = "Curved-wall projector planning for Blender 4.2"
+requires-python = ">=3.10"
+
+# The add-on itself has no runtime dependencies beyond Blender's bundled
+# Python. These are only needed to run the test suite and linters.
+[project.optional-dependencies]
+dev = ["pytest==8.3.5", "ruff==0.9.10"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra --strict-markers"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+exclude = ["docs", "archive"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "E501",  # long lines are checked by the formatter, not the linter
+    "B008",  # Blender property definitions are function calls in class bodies
+    "UP038", # isinstance with a tuple is faster than the PEP 604 union form
+]
+
+[tool.ruff.lint.per-file-ignores]
+# A Blender add-on's bl_info dict must precede any import, so module-level
+# imports genuinely cannot come first.
+"blender_projection_system/__init__.py" = ["E402"]

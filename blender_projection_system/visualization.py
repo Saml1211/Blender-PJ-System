@@ -1,673 +1,548 @@
-import bpy
-from bpy.types import Operator
+"""Scene construction and analysis visualisation.
+
+Every mesh here is generated from :mod:`blender_projection_system.core` output
+and lives in a dedicated collection. v0.1 drove a Geometry Nodes cone through
+drivers, which silently produced nothing when a socket name changed between
+Blender versions; building explicit meshes is boring, deterministic and easy
+to verify.
+
+Nothing in this module registers Blender classes - it is called by the
+operators in :mod:`blender_projection_system.operators`.
+"""
+
+from __future__ import annotations
+
 import math
+from collections.abc import Iterable, Sequence
 
-def setup_projection_cone_nodes(obj):
+import bpy
+from mathutils import Matrix, Vector
+
+from .core.array import ProjectorPlacement
+from .core.errors import ProjectionError
+from .core.footprint import Footprint, footprint_corners_world
+from .core.surfaces import CylindricalWall
+from .core.vectors import length as vec_length
+from .core.vectors import sub as sub_vec
+
+COLLECTION_TARGETS = "PJ Targets"
+COLLECTION_PROJECTORS = "PJ Projectors"
+COLLECTION_ANALYSIS = "PJ Analysis"
+OWNER_ID = "projection_planner"
+OWNER_KEY = "pj_owner"
+ROLE_KEY = "pj_collection_role"
+MATERIAL_ROLE_KEY = "pj_material_role"
+
+#: Footprint outlines are pushed this far off the wall so they do not z-fight.
+SURFACE_OFFSET = 0.01
+
+#: Safety ceiling for any one wall-hugging ribbon. Very large but otherwise
+#: valid radii must not turn one click into millions of Blender mesh elements.
+MAX_BAND_SEGMENTS = 4096
+
+#: Distinct colours cycled across projectors in the analysis overlay.
+PALETTE: tuple[tuple[float, float, float, float], ...] = (
+    (0.95, 0.26, 0.21, 1.0),
+    (0.26, 0.65, 0.96, 1.0),
+    (0.30, 0.85, 0.39, 1.0),
+    (0.99, 0.75, 0.18, 1.0),
+    (0.72, 0.40, 0.93, 1.0),
+    (0.15, 0.85, 0.83, 1.0),
+)
+
+
+# ---------------------------------------------------------------------------
+# Collections
+# ---------------------------------------------------------------------------
+
+
+def get_collection(context, name: str) -> bpy.types.Collection:
+    """Fetch or create an add-on-owned top-level collection.
+
+    A user collection with the preferred display name is never adopted.
     """
-    Setup Geometry Nodes for projection cone visualization.
+    coll = next(
+        (
+            candidate
+            for candidate in context.scene.collection.children
+            if candidate.get(OWNER_KEY) == OWNER_ID and candidate.get(ROLE_KEY) == name
+        ),
+        None,
+    )
+    if coll is None:
+        preferred = name if bpy.data.collections.get(name) is None else f"{name} (Projection Planner)"
+        coll = bpy.data.collections.new(preferred)
+        coll[OWNER_KEY] = OWNER_ID
+        coll[ROLE_KEY] = name
+    if coll.name not in context.scene.collection.children:
+        context.scene.collection.children.link(coll)
+    return coll
 
-    Args:
-        obj: The projector object to attach the visualization to
-    """
-    # Check if object has a Geometry Nodes modifier already
-    if "ProjectionCone" in obj.modifiers:
-        return
 
-    # Create a new node group for projection cone if it doesn't exist
-    node_group_name = "ProjectionConeNodeGroup"
-    if node_group_name not in bpy.data.node_groups:
-        create_projection_cone_node_group(node_group_name)
+def link_only_to(obj: bpy.types.Object, coll: bpy.types.Collection) -> None:
+    """Make ``coll`` the object's sole collection."""
+    for existing in list(obj.users_collection):
+        if existing is not coll:
+            existing.objects.unlink(obj)
+    if obj.name not in coll.objects:
+        coll.objects.link(obj)
 
-    # Add the Geometry Nodes modifier to the object
-    try:
-        # In Blender 4.x, the type is 'GEOMETRY_NODES' not 'NODES'
-        modifier = obj.modifiers.new(name="ProjectionCone", type='GEOMETRY_NODES')
-        if modifier is None:
-            # Try the older type name as fallback
-            modifier = obj.modifiers.new(name="ProjectionCone", type='NODES')
 
-        if modifier is None:
-            print("Error: Could not create Geometry Nodes modifier")
-            return
+def clear_collection(context, name: str) -> int:
+    """Delete owned objects from this scene's owned collection only."""
+    coll = next(
+        (
+            candidate
+            for candidate in context.scene.collection.children
+            if candidate.get(OWNER_KEY) == OWNER_ID and candidate.get(ROLE_KEY) == name
+        ),
+        None,
+    )
+    if coll is None:
+        return 0
+    removed = 0
+    for obj in list(coll.objects):
+        if obj.get(OWNER_KEY) != OWNER_ID:
+            continue
+        data = obj.data
+        bpy.data.objects.remove(obj, do_unlink=True)
+        removed += 1
+        if isinstance(data, bpy.types.Mesh) and data.users == 0:
+            bpy.data.meshes.remove(data)
+    return removed
 
-        modifier.node_group = bpy.data.node_groups[node_group_name]
-    except Exception as e:
-        print(f"Error setting up projection cone: {e}")
 
-    # Setup drivers from custom properties to node group inputs
-    setup_cone_drivers(obj, modifier)
+# ---------------------------------------------------------------------------
+# Materials
+# ---------------------------------------------------------------------------
 
-def create_projection_cone_node_group(node_group_name):
-    """
-    Create the node group for projection cone visualization.
 
-    Args:
-        node_group_name: Name for the new node group
-    """
-    # Create a new node group
-    node_group = bpy.data.node_groups.new(name=node_group_name, type='GeometryNodeTree')
-
-    # Create group input/output nodes
-    group_in = node_group.nodes.new('NodeGroupInput')
-    group_in.location = (-500, 0)
-    group_out = node_group.nodes.new('NodeGroupOutput')
-    group_out.location = (500, 0)
-
-    # Add inputs for the cone parameters using the interface
-    try:
-        # For Blender 4.x
-        throw_distance = node_group.interface.new_socket(name='Throw Distance', in_out='INPUT', socket_type='NodeSocketFloat')
-        throw_distance.default_value = 4.0
-
-        image_width = node_group.interface.new_socket(name='Image Width', in_out='INPUT', socket_type='NodeSocketFloat')
-        image_width.default_value = 2.0
-
-        aspect_ratio = node_group.interface.new_socket(name='Aspect Ratio', in_out='INPUT', socket_type='NodeSocketFloat')
-        aspect_ratio.default_value = 16.0 / 9.0
-
-        visible = node_group.interface.new_socket(name='Visible', in_out='INPUT', socket_type='NodeSocketBool')
-        visible.default_value = True
-
-        # Add output for the resulting geometry
-        node_group.interface.new_socket(name='Geometry', in_out='OUTPUT', socket_type='NodeSocketGeometry')
-    except Exception as e:
-        print(f"Error setting up node group interface: {e}")
-        # Fallback for older Blender versions
-        try:
-            node_group.inputs.new('NodeSocketFloat', 'Throw Distance')
-            node_group.inputs.new('NodeSocketFloat', 'Image Width')
-            node_group.inputs.new('NodeSocketFloat', 'Aspect Ratio')
-            node_group.inputs.new('NodeSocketBool', 'Visible')
-
-            # Set default values
-            node_group.inputs['Throw Distance'].default_value = 4.0
-            node_group.inputs['Image Width'].default_value = 2.0
-            node_group.inputs['Aspect Ratio'].default_value = 16.0 / 9.0
-            node_group.inputs['Visible'].default_value = True
-
-            # Add output for the resulting geometry
-            node_group.outputs.new('NodeSocketGeometry', 'Geometry')
-        except Exception as e:
-            print(f"Error setting up node group inputs/outputs: {e}")
-
-    # Add geometry nodes to create a cone shape
-    mesh_line = node_group.nodes.new('GeometryNodeMeshLine')
-    mesh_line.mode = 'END_POINTS'
-    mesh_line.count_mode = 'TOTAL'
-    mesh_line.count = 4  # We need 4 points for a rectangular base
-    mesh_line.location = (-300, 0)
-
-    # Position node - will be used to place the points in a rectangle
-    position = node_group.nodes.new('GeometryNodeInputPosition')
-    position.location = (-400, -100)
-
-    # Set position node - to position the points in a rectangle
-    set_position = node_group.nodes.new('GeometryNodeSetPosition')
-    set_position.location = (-150, 0)
-
-    # Math nodes to calculate rectangle corners
-    combine_xyz1 = node_group.nodes.new('ShaderNodeCombineXYZ')
-    combine_xyz1.location = (-300, -200)
-
-    combine_xyz2 = node_group.nodes.new('ShaderNodeCombineXYZ')
-    combine_xyz2.location = (-300, -300)
-
-    combine_xyz3 = node_group.nodes.new('ShaderNodeCombineXYZ')
-    combine_xyz3.location = (-300, -400)
-
-    combine_xyz4 = node_group.nodes.new('ShaderNodeCombineXYZ')
-    combine_xyz4.location = (-300, -500)
-
-    # Math nodes for calculations
-    divide_aspect = node_group.nodes.new('ShaderNodeMath')
-    divide_aspect.operation = 'DIVIDE'
-    divide_aspect.location = (-450, -250)
-
-    multiply_half_width = node_group.nodes.new('ShaderNodeMath')
-    multiply_half_width.operation = 'MULTIPLY'
-    multiply_half_width.inputs[1].default_value = 0.5
-    multiply_half_width.location = (-450, -350)
-
-    multiply_half_height = node_group.nodes.new('ShaderNodeMath')
-    multiply_half_height.operation = 'MULTIPLY'
-    multiply_half_height.inputs[1].default_value = 0.5
-    multiply_half_height.location = (-450, -450)
-
-    # Join geometry node to create triangle faces
-    join_geometry = node_group.nodes.new('GeometryNodeMeshFillGrid')
-    join_geometry.location = (0, 0)
-
-    # Mesh to points node
-    mesh_to_points = node_group.nodes.new('GeometryNodeMeshToPoints')
-    mesh_to_points.location = (-50, -200)
-
-    # Extrude mesh node to create the cone
-    extrude = node_group.nodes.new('GeometryNodeExtrudeMesh')
-    extrude.mode = 'VERTICES'
-    extrude.location = (150, 0)
-
-    # Vector for extrusion
-    combine_xyz_extrude = node_group.nodes.new('ShaderNodeCombineXYZ')
-    combine_xyz_extrude.location = (0, -100)
-    combine_xyz_extrude.inputs[1].default_value = -1.0  # Extrude along Y axis (projector forward)
-
-    # Set material node
-    set_material = node_group.nodes.new('GeometryNodeSetMaterial')
-    set_material.location = (300, 0)
-
-    # Create a simple material for the cone
-    if "ProjectionConeMaterial" not in bpy.data.materials:
-        create_cone_material()
-
-    set_material.inputs[2].default_value = bpy.data.materials["ProjectionConeMaterial"]
-
-    # Switch node to enable/disable the visualization
-    switch = node_group.nodes.new('GeometryNodeSwitch')
-    switch.input_type = 'GEOMETRY'
-    switch.location = (400, 100)
-
-    # Connect nodes
-
-    # Input connections
-    node_group.links.new(multiply_half_width.inputs[0], group_in.outputs['Image Width'])
-    node_group.links.new(divide_aspect.inputs[0], group_in.outputs['Image Width'])
-    node_group.links.new(divide_aspect.inputs[1], group_in.outputs['Aspect Ratio'])
-    node_group.links.new(multiply_half_height.inputs[0], divide_aspect.outputs[0])
-    node_group.links.new(combine_xyz_extrude.inputs[0], group_in.outputs['Throw Distance'])
-    node_group.links.new(switch.inputs[1], group_in.outputs['Visible'])
-
-    # Rectangle corner positions
-    node_group.links.new(combine_xyz1.inputs[0], multiply_half_width.outputs[0])   # +half_width
-    node_group.links.new(combine_xyz1.inputs[2], multiply_half_height.outputs[0])  # +half_height
-
-    node_group.links.new(combine_xyz2.inputs[0], multiply_half_width.outputs[0])   # +half_width
-    node_group.links.new(combine_xyz2.inputs[2], multiply_half_height.outputs[0])  # -half_height
-    node_group.links.new(combine_xyz2.inputs[2].default_value, -multiply_half_height.outputs[0].default_value)
-
-    node_group.links.new(combine_xyz3.inputs[0], multiply_half_width.outputs[0])   # -half_width
-    node_group.links.new(combine_xyz3.inputs[2], multiply_half_height.outputs[0])  # -half_height
-    node_group.links.new(combine_xyz3.inputs[0].default_value, -multiply_half_width.outputs[0].default_value)
-    node_group.links.new(combine_xyz3.inputs[2].default_value, -multiply_half_height.outputs[0].default_value)
-
-    node_group.links.new(combine_xyz4.inputs[0], multiply_half_width.outputs[0])   # -half_width
-    node_group.links.new(combine_xyz4.inputs[2], multiply_half_height.outputs[0])  # +half_height
-    node_group.links.new(combine_xyz4.inputs[0].default_value, -multiply_half_width.outputs[0].default_value)
-
-    # Position setting
-    node_group.links.new(set_position.inputs[0], mesh_line.outputs[0])
-    node_group.links.new(mesh_to_points.inputs[0], set_position.outputs[0])
-
-    # Extrusion
-    node_group.links.new(extrude.inputs[0], join_geometry.outputs[0])
-    node_group.links.new(extrude.inputs[2], combine_xyz_extrude.outputs[0])
-
-    # Material
-    node_group.links.new(set_material.inputs[0], extrude.outputs[0])
-
-    # Switch for visibility
-    node_group.links.new(switch.inputs[0], set_material.outputs[0])
-
-    # Output
-    node_group.links.new(group_out.inputs[0], switch.outputs[0])
-
-    return node_group
-
-def create_cone_material():
-    """Create a semi-transparent material for the projection cone"""
-    mat = bpy.data.materials.new(name="ProjectionConeMaterial")
-    mat.use_nodes = True
-    nodes = mat.node_tree.nodes
-    links = mat.node_tree.links
-
-    # Clear default nodes
-    for node in nodes:
-        nodes.remove(node)
-
-    # Create nodes
-    output = nodes.new(type='ShaderNodeOutputMaterial')
-    output.location = (400, 0)
-
-    principled = nodes.new(type='ShaderNodeBsdfPrincipled')
-    principled.location = (0, 0)
-    principled.inputs['Base Color'].default_value = (0.0, 0.8, 1.0, 1.0)  # Light blue
-    principled.inputs['Alpha'].default_value = 0.3  # Mostly transparent
-    principled.inputs['Specular'].default_value = 0.0  # No specular
-    principled.inputs['Roughness'].default_value = 1.0  # No reflections
-
-    # Connect nodes
-    links.new(principled.outputs['BSDF'], output.inputs['Surface'])
-
-    # Set material properties
-    mat.blend_method = 'BLEND'  # Enable transparency
-    mat.shadow_method = 'NONE'  # Don't cast shadows
-
+def _owned_material(
+    name: str,
+    role: str,
+    colour: tuple[float, float, float, float],
+) -> bpy.types.Material:
+    """Fetch or create a material without adopting a same-named user asset."""
+    mat = next(
+        (
+            candidate
+            for candidate in bpy.data.materials
+            if candidate.get(OWNER_KEY) == OWNER_ID
+            and candidate.get(MATERIAL_ROLE_KEY) == role
+        ),
+        None,
+    )
+    if mat is None:
+        preferred = name if bpy.data.materials.get(name) is None else f"{name} (Projection Planner)"
+        mat = bpy.data.materials.new(preferred)
+        mat[OWNER_KEY] = OWNER_ID
+        mat[MATERIAL_ROLE_KEY] = role
+        mat.use_nodes = False
+    mat.diffuse_color = colour
+    mat.roughness = 1.0
     return mat
 
-def setup_cone_drivers(obj, modifier):
+
+def get_overlay_material(index: int) -> bpy.types.Material:
+    """A flat emission-tinted viewport material for analysis overlays."""
+    palette_index = index % len(PALETTE)
+    return _owned_material(
+        f"PJ_Overlay_{palette_index}",
+        f"overlay:{palette_index}",
+        PALETTE[palette_index],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Wall geometry
+# ---------------------------------------------------------------------------
+
+
+def wall_from_object(obj: bpy.types.Object) -> CylindricalWall:
+    """Rebuild the pure-math wall description from a tagged Blender object."""
+    if any(abs(value - 1.0) > 1e-6 for value in obj.scale):
+        raise ProjectionError(
+            f"'{obj.name}' has object scale applied; use Ctrl+A > Scale before analysis"
+        )
+    if any(abs(value) > 1e-6 for value in obj.rotation_euler):
+        raise ProjectionError(
+            f"'{obj.name}' is rotated; cylindrical targets must remain vertical and unrotated"
+        )
+    props = obj.pj_wall
+    loc = obj.matrix_world.translation
+    return CylindricalWall(
+        base_center=(loc.x, loc.y, loc.z),
+        radius=props.radius,
+        height=props.height,
+        angle_start=math.radians(props.arc_start_deg),
+        angle_end=math.radians(props.arc_end_deg),
+        concave=props.concave,
+        name=obj.name,
+    )
+
+
+def sync_generated_wall_mesh(obj: bpy.types.Object) -> bool:
+    """Rebuild a generated wall mesh after its editable parameters change."""
+    if not obj.get("pj_generated_wall") or obj.get(OWNER_KEY) != OWNER_ID:
+        return False
+    wall = wall_from_object(obj)
+    old_mesh = obj.data
+    obj.data = build_wall_mesh(wall, obj.pj_wall.segments)
+    if isinstance(old_mesh, bpy.types.Mesh) and old_mesh.users == 0:
+        bpy.data.meshes.remove(old_mesh)
+    return True
+
+
+def build_wall_mesh(wall: CylindricalWall, segments: int) -> bpy.types.Mesh:
+    """A quad strip following the arc, with vertices local to the base centre."""
+    mesh = bpy.data.meshes.new(f"{wall.name}_mesh")
+    verts: list[tuple[float, float, float]] = []
+    faces: list[tuple[int, int, int, int]] = []
+
+    step = wall.arc_length / segments
+    for i in range(segments + 1):
+        bottom = wall.point_at(i * step, 0.0)
+        top = wall.point_at(i * step, wall.height)
+        # Local coordinates: subtract the base centre so the object transform
+        # can move the whole wall without invalidating the parameters.
+        verts.append((bottom[0] - wall.base_center[0], bottom[1] - wall.base_center[1], 0.0))
+        verts.append((top[0] - wall.base_center[0], top[1] - wall.base_center[1], wall.height))
+
+    for i in range(segments):
+        a, b = 2 * i, 2 * i + 1
+        c, d = 2 * (i + 1), 2 * (i + 1) + 1
+        # Wind so the face normal points at the projectors on a concave wall.
+        faces.append((a, b, d, c) if wall.concave else (a, c, d, b))
+
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    mesh.validate()
+    return mesh
+
+
+# ---------------------------------------------------------------------------
+# Projector objects
+# ---------------------------------------------------------------------------
+
+
+def pose_matrix(position: Sequence[float], basis_columns) -> Matrix:
+    """World matrix from a core :class:`~.core.pose.Pose`.
+
+    Blender cameras look down local ``-Z``, which is exactly the core's
+    convention, so the local axes map across directly.
     """
-    Setup drivers to link projector properties to geometry nodes inputs
+    x_axis, y_axis, z_axis = basis_columns
+    rot = Matrix(
+        (
+            (x_axis[0], y_axis[0], z_axis[0]),
+            (x_axis[1], y_axis[1], z_axis[1]),
+            (x_axis[2], y_axis[2], z_axis[2]),
+        )
+    )
+    return Matrix.Translation(Vector(position)) @ rot.to_4x4()
 
-    Args:
-        obj: The projector object
-        modifier: The Geometry Nodes modifier
+
+def configure_camera(obj: bpy.types.Object, spec, throw_distance: float) -> None:
+    """Match the camera's optics to the projector spec.
+
+    Blender expresses both lens shifts as a fraction of the *larger* sensor
+    dimension, so the vertical shift is divided by the aspect ratio.
     """
-    # Check if modifier is valid
-    if modifier is None:
-        print("Error: Cannot setup drivers - modifier is None")
-        return
-
-    try:
-        # For Blender 4.x, the path is different
-        # Try to find the correct path for the inputs
-        try:
-            # First try the Blender 4.x path
-            throw_distance_path = 'nodes["Group Inputs"].inputs[1].default_value'
-            # Just to test if the path is valid
-            _ = eval(f"modifier.{throw_distance_path}")
-        except Exception:
-            try:
-                # Try alternative path for Blender 4.x
-                throw_distance_path = 'nodes["Group Inputs"].inputs["Throw Distance"].default_value'
-                # Just to test if the path is valid
-                _ = eval(f"modifier.{throw_distance_path}")
-            except Exception:
-                # Fallback to a more generic approach
-                print("Using fallback driver path for Throw Distance")
-                throw_distance_path = 'node_group.interface.items_tree[1].default_value'
-
-        # Driver for throw distance
-        throw_distance_driver = modifier.driver_add(throw_distance_path).driver
-        throw_distance_driver.type = 'SCRIPTED'
-        throw_distance_driver.expression = "var"
-        var = throw_distance_driver.variables.new()
-        var.name = "var"
-        var.type = 'SINGLE_PROP'
-        var.targets[0].id = obj
-        var.targets[0].data_path = "pj_throw_distance"
-    except Exception as e:
-        print(f"Error setting up throw distance driver: {e}")
-
-    try:
-        # For Blender 4.x, the path is different
-        # Try to find the correct path for the inputs
-        try:
-            # First try the Blender 4.x path
-            image_width_path = 'nodes["Group Inputs"].inputs[2].default_value'
-            # Just to test if the path is valid
-            _ = eval(f"modifier.{image_width_path}")
-        except Exception:
-            try:
-                # Try alternative path for Blender 4.x
-                image_width_path = 'nodes["Group Inputs"].inputs["Image Width"].default_value'
-                # Just to test if the path is valid
-                _ = eval(f"modifier.{image_width_path}")
-            except Exception:
-                # Fallback to a more generic approach
-                print("Using fallback driver path for Image Width")
-                image_width_path = 'node_group.interface.items_tree[2].default_value'
-
-        # Driver for image width
-        image_width_driver = modifier.driver_add(image_width_path).driver
-        image_width_driver.type = 'SCRIPTED'
-        image_width_driver.expression = "var"
-        var = image_width_driver.variables.new()
-        var.name = "var"
-        var.type = 'SINGLE_PROP'
-        var.targets[0].id = obj
-        var.targets[0].data_path = "pj_image_width"
-    except Exception as e:
-        print(f"Error setting up image width driver: {e}")
-
-    try:
-        # For Blender 4.x, the path is different
-        # Try to find the correct path for the inputs
-        try:
-            # First try the Blender 4.x path
-            aspect_ratio_path = 'nodes["Group Inputs"].inputs[3].default_value'
-            # Just to test if the path is valid
-            _ = eval(f"modifier.{aspect_ratio_path}")
-        except Exception:
-            try:
-                # Try alternative path for Blender 4.x
-                aspect_ratio_path = 'nodes["Group Inputs"].inputs["Aspect Ratio"].default_value'
-                # Just to test if the path is valid
-                _ = eval(f"modifier.{aspect_ratio_path}")
-            except Exception:
-                # Fallback to a more generic approach
-                print("Using fallback driver path for Aspect Ratio")
-                aspect_ratio_path = 'node_group.interface.items_tree[3].default_value'
-
-        # Driver for aspect ratio
-        aspect_ratio_driver = modifier.driver_add(aspect_ratio_path).driver
-        aspect_ratio_driver.type = 'SCRIPTED'
-        aspect_ratio_driver.expression = "width/height"
-
-        var_width = aspect_ratio_driver.variables.new()
-        var_width.name = "width"
-        var_width.type = 'SINGLE_PROP'
-        var_width.targets[0].id = obj
-        var_width.targets[0].data_path = "pj_aspect_ratio_w"
-
-        var_height = aspect_ratio_driver.variables.new()
-        var_height.name = "height"
-        var_height.type = 'SINGLE_PROP'
-        var_height.targets[0].id = obj
-        var_height.targets[0].data_path = "pj_aspect_ratio_h"
-    except Exception as e:
-        print(f"Error setting up aspect ratio driver: {e}")
-
-    try:
-        # For Blender 4.x, the path is different
-        # Try to find the correct path for the inputs
-        try:
-            # First try the Blender 4.x path
-            visibility_path = 'nodes["Group Inputs"].inputs[4].default_value'
-            # Just to test if the path is valid
-            _ = eval(f"modifier.{visibility_path}")
-        except Exception:
-            try:
-                # Try alternative path for Blender 4.x
-                visibility_path = 'nodes["Group Inputs"].inputs["Visible"].default_value'
-                # Just to test if the path is valid
-                _ = eval(f"modifier.{visibility_path}")
-            except Exception:
-                # Fallback to a more generic approach
-                print("Using fallback driver path for Visibility")
-                visibility_path = 'node_group.interface.items_tree[4].default_value'
-
-        # Driver for visibility
-        visibility_driver = modifier.driver_add(visibility_path).driver
-        visibility_driver.type = 'SCRIPTED'
-        visibility_driver.expression = "var"
-        var = visibility_driver.variables.new()
-        var.name = "var"
-        var.type = 'SINGLE_PROP'
-        var.targets[0].id = obj
-        var.targets[0].data_path = "pj_show_cone"
-    except Exception as e:
-        print(f"Error setting up visibility driver: {e}")
-
-class PJ_OT_add_projection_cone(Operator):
-    """Add projection cone visualization to the selected projector"""
-    bl_idname = "projection.add_projection_cone"
-    bl_label = "Add Projection Cone"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    def execute(self, context):
-        obj = context.object
-
-        if not (obj and obj.pj_is_projector):
-            self.report({'ERROR'}, "No projector selected")
-            return {'CANCELLED'}
-
-        # Setup the projection cone visualization
-        setup_projection_cone_nodes(obj)
-
-        # Report success
-        self.report({'INFO'}, "Projection cone added to projector")
-        return {'FINISHED'}
-
-class PJ_OT_create_test_surface(Operator):
-    """Create a test surface at the projection distance"""
-    bl_idname = "projection.create_test_surface"
-    bl_label = "Create Test Surface"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    def execute(self, context):
-        obj = context.object
-
-        if not (obj and obj.pj_is_projector):
-            self.report({'ERROR'}, "No projector selected")
-            return {'CANCELLED'}
-
-        # Get projection parameters
-        throw_distance = obj.pj_throw_distance
-        image_width = obj.pj_image_width
-        aspect_ratio = obj.pj_aspect_ratio_w / obj.pj_aspect_ratio_h
-        image_height = image_width / aspect_ratio
-
-        # Create a plane at the projection distance
-        bpy.ops.mesh.primitive_plane_add(size=1.0)
-        surface = context.active_object
-        surface.name = f"Projection_Surface_{obj.name}"
-
-        # Position the plane at the projection distance
-        surface.location = (0, -throw_distance, 0)  # Assuming projector points along -Y axis
-
-        # Scale the plane to match the projection size
-        surface.scale = (image_width/2, 1.0, image_height/2)
-
-        # Parent the surface to the projector for easier manipulation
-        surface.parent = obj
-
-        # Create a material for the surface
-        if "ProjectionSurfaceMaterial" not in bpy.data.materials:
-            create_surface_material()
-
-        # Apply the material
-        if len(surface.data.materials) == 0:
-            surface.data.materials.append(bpy.data.materials["ProjectionSurfaceMaterial"])
-        else:
-            surface.data.materials[0] = bpy.data.materials["ProjectionSurfaceMaterial"]
-
-        # Report success
-        self.report({'INFO'}, "Test surface created at projection distance")
-        return {'FINISHED'}
-
-def create_surface_material():
-    """Create a material for the projection surface"""
-    mat = bpy.data.materials.new(name="ProjectionSurfaceMaterial")
-    mat.use_nodes = True
-    nodes = mat.node_tree.nodes
-    links = mat.node_tree.links
-
-    # Clear default nodes
-    for node in nodes:
-        nodes.remove(node)
-
-    # Create nodes
-    output = nodes.new(type='ShaderNodeOutputMaterial')
-    output.location = (400, 0)
-
-    principled = nodes.new(type='ShaderNodeBsdfPrincipled')
-    principled.location = (0, 0)
-    principled.inputs['Base Color'].default_value = (0.9, 0.9, 0.9, 1.0)  # Light gray
-    principled.inputs['Specular'].default_value = 0.1  # Low specular
-    principled.inputs['Roughness'].default_value = 0.8  # Mostly rough
-
-    # Add a grid texture for better visualization
-    checker = nodes.new(type='ShaderNodeTexChecker')
-    checker.location = (-300, 0)
-    checker.inputs['Scale'].default_value = 5.0
-    checker.inputs['Color1'].default_value = (0.9, 0.9, 0.9, 1.0)  # Light gray
-    checker.inputs['Color2'].default_value = (0.7, 0.7, 0.7, 1.0)  # Darker gray
-
-    # Connect nodes
-    links.new(checker.outputs['Color'], principled.inputs['Base Color'])
-    links.new(principled.outputs['BSDF'], output.inputs['Surface'])
-
-    return mat
-
-class PJ_OT_setup_projection_mapping(Operator):
-    """Setup projection mapping on selected objects"""
-    bl_idname = "projection.setup_projection_mapping"
-    bl_label = "Setup Projection Mapping"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    @classmethod
-    def poll(cls, context):
-        # Check if there's an active projector and selected objects
-        return (context.active_object and
-                context.active_object.pj_is_projector and
-                len(context.selected_objects) > 1)
-
-    def execute(self, context):
-        projector = context.active_object
-
-        if not projector.pj_is_projector:
-            self.report({'ERROR'}, "Active object is not a projector")
-            return {'CANCELLED'}
-
-        # Find the projector's camera
-        projector_camera = None
-        for child in projector.children:
-            if child.type == 'CAMERA':
-                projector_camera = child
-                break
-
-        if not projector_camera:
-            self.report({'ERROR'}, "Projector camera not found")
-            return {'CANCELLED'}
-
-        # Create a default projection image if it doesn't exist
-        if "projection_test_grid" not in bpy.data.images:
-            create_projection_test_grid()
-
-        # Create a projection material if it doesn't exist
-        if "ProjectionMaterial" not in bpy.data.materials:
-            create_projection_material()
-
-        # Set up projection on selected objects
-        mapped_count = 0
-        for obj in context.selected_objects:
-            if obj != projector and obj.type == 'MESH':
-                # Add the projection material to the object
-                if len(obj.material_slots) == 0:
-                    obj.data.materials.append(bpy.data.materials["ProjectionMaterial"])
-                else:
-                    obj.material_slots[0].material = bpy.data.materials["ProjectionMaterial"]
-
-                # Set up the projector as the texture coordinate source
-                set_projector_as_mapping_source(obj, projector_camera)
-
-                mapped_count += 1
-
-        self.report({'INFO'}, f"Set up projection mapping on {mapped_count} objects")
-
-        return {'FINISHED'}
-
-def create_projection_test_grid():
-    """Create a test grid image for projection"""
-    size = 1024
-    image = bpy.data.images.new("projection_test_grid", width=size, height=size)
-
-    # Create a test grid pattern
-    pixels = [None] * size * size * 4
-
-    for y in range(size):
-        for x in range(size):
-            # Create a grid pattern
-            grid_lines = ((x % 128 < 2) or (y % 128 < 2))
-
-            # Colored corners for orientation
-            red_corner = (x < 100 and y < 100)
-            green_corner = (x > size - 100 and y < 100)
-            blue_corner = (x < 100 and y > size - 100)
-            yellow_corner = (x > size - 100 and y > size - 100)
-
-            i = (y * size + x) * 4
-
-            if red_corner:
-                pixels[i] = 1.0
-                pixels[i+1] = 0.0
-                pixels[i+2] = 0.0
-                pixels[i+3] = 1.0
-            elif green_corner:
-                pixels[i] = 0.0
-                pixels[i+1] = 1.0
-                pixels[i+2] = 0.0
-                pixels[i+3] = 1.0
-            elif blue_corner:
-                pixels[i] = 0.0
-                pixels[i+1] = 0.0
-                pixels[i+2] = 1.0
-                pixels[i+3] = 1.0
-            elif yellow_corner:
-                pixels[i] = 1.0
-                pixels[i+1] = 1.0
-                pixels[i+2] = 0.0
-                pixels[i+3] = 1.0
-            elif grid_lines:
-                pixels[i] = 1.0
-                pixels[i+1] = 1.0
-                pixels[i+2] = 1.0
-                pixels[i+3] = 1.0
-            else:
-                pixels[i] = 0.1
-                pixels[i+1] = 0.1
-                pixels[i+2] = 0.1
-                pixels[i+3] = 1.0
-
-    # Flatten the list
-    pixels = [chan for px in pixels for chan in (px if px else (0, 0, 0, 1))]
-
-    # Apply pixels to the image
-    image.pixels = pixels
-    image.update()
-
-    return image
-
-def create_projection_material():
-    """Create a material for projection mapping"""
-    mat = bpy.data.materials.new(name="ProjectionMaterial")
-    mat.use_nodes = True
-    nodes = mat.node_tree.nodes
-    links = mat.node_tree.links
-
-    # Clear default nodes
-    for node in nodes:
-        nodes.remove(node)
-
-    # Create nodes
-    output = nodes.new(type='ShaderNodeOutputMaterial')
-    output.location = (400, 0)
-
-    principled = nodes.new(type='ShaderNodeBsdfPrincipled')
-    principled.location = (200, 0)
-
-    texture = nodes.new(type='ShaderNodeTexImage')
-    texture.location = (0, 0)
-    texture.image = bpy.data.images["projection_test_grid"]
-    texture.projection = 'FLAT'
-
-    texcoord = nodes.new(type='ShaderNodeTexCoord')
-    texcoord.location = (-200, 0)
-
-    # Connect nodes
-    links.new(principled.outputs[0], output.inputs[0])
-    links.new(texture.outputs[0], principled.inputs['Base Color'])
-    links.new(texcoord.outputs['Camera'], texture.inputs['Vector'])
-
-    return mat
-
-def set_projector_as_mapping_source(obj, camera):
-    """Set the projector's camera as the texture coordinate source"""
-    # Ensure object has the projection material
-    mat = bpy.data.materials["ProjectionMaterial"]
-
-    # Get the texcoord node
-    texcoord = None
-    for node in mat.node_tree.nodes:
-        if node.type == 'TEX_COORD':
-            texcoord = node
-            break
-
-    if texcoord:
-        # Set the object and camera references
-        texcoord.object = camera
-
-        # Ensure the camera is enabled for texture projection
-        camera.data.type = 'PERSP'
-
-def register():
-    bpy.utils.register_class(PJ_OT_add_projection_cone)
-    bpy.utils.register_class(PJ_OT_create_test_surface)
-    bpy.utils.register_class(PJ_OT_setup_projection_mapping)
-
-def unregister():
-    bpy.utils.unregister_class(PJ_OT_setup_projection_mapping)
-    bpy.utils.unregister_class(PJ_OT_create_test_surface)
-    bpy.utils.unregister_class(PJ_OT_add_projection_cone)
-
-if __name__ == "__main__":
-    register()
+    cam = obj.data
+    from .core.throw import half_angles
+
+    th, tv = half_angles(spec)
+    cam.type = "PERSP"
+    cam.sensor_fit = "HORIZONTAL"
+    cam.angle_x = 2.0 * th
+    cam.shift_x = spec.lens_shift_h
+    cam.shift_y = spec.lens_shift_v / spec.aspect
+    cam.display_size = 0.35
+    cam.show_limits = True
+    cam.clip_start = 0.05
+    cam.clip_end = max(10.0, throw_distance * 2.0)
+    # Silence the unused-variable lint while keeping the vertical angle handy
+    # for anyone reading this in the console.
+    cam["pj_v_half_angle_deg"] = math.degrees(tv)
+
+
+def apply_spec_to_object(obj: bpy.types.Object, spec, mode: str) -> None:
+    """Write a core :class:`ProjectorSpec` back onto a projector object."""
+    p = obj.pj_projector
+    p.is_projector = True
+    p.throw_ratio = spec.throw_ratio
+    p.aspect_w = spec.aspect_w
+    p.aspect_h = spec.aspect_h
+    p.lumens = spec.lumens
+    p.lens_shift_v = spec.lens_shift_v
+    p.lens_shift_h = spec.lens_shift_h
+    p.max_lens_shift_v = spec.max_lens_shift_v
+    p.max_lens_shift_h = spec.max_lens_shift_h
+    p.mount_mode = mode
+
+
+def spec_from_object(obj: bpy.types.Object):
+    """Read a core :class:`ProjectorSpec` out of a projector object."""
+    from .core.throw import ProjectorSpec
+
+    p = obj.pj_projector
+    return ProjectorSpec(
+        throw_ratio=p.throw_ratio,
+        aspect_w=p.aspect_w,
+        aspect_h=p.aspect_h,
+        lumens=p.lumens,
+        lens_shift_v=p.lens_shift_v,
+        lens_shift_h=p.lens_shift_h,
+        max_lens_shift_v=p.max_lens_shift_v,
+        max_lens_shift_h=p.max_lens_shift_h,
+        throw_ratio_min=p.throw_ratio_min,
+        throw_ratio_max=p.throw_ratio_max,
+        label=obj.name,
+    )
+
+
+def store_placement_results(obj: bpy.types.Object, placement: ProjectorPlacement) -> None:
+    p = obj.pj_projector
+    p.calc_throw_distance = placement.throw_distance
+    p.calc_image_width = placement.image_width
+    p.calc_image_height = placement.image_height
+    p.calc_arc_span = placement.arc_span
+    if placement.footprint is not None:
+        p.calc_hit_ratio = placement.footprint.hit_ratio
+        p.calc_max_incidence_deg = math.degrees(placement.footprint.max_incidence)
+    p.has_result = True
+
+
+def store_footprint_results(obj: bpy.types.Object, footprint: Footprint, gain: float) -> None:
+    p = obj.pj_projector
+    p.calc_throw_distance = footprint.center_distance
+    p.calc_arc_span = footprint.arc_span
+    p.calc_hit_ratio = footprint.hit_ratio
+    p.calc_max_incidence_deg = math.degrees(footprint.max_incidence)
+    if footprint.hits():
+        p.calc_mean_nits = footprint.brightness(gain).mean_nits
+    from .core.throw import image_size
+
+    if footprint.center_distance > 0.0:
+        size = image_size(footprint.center_distance, footprint.spec)
+        p.calc_image_width = size.width
+        p.calc_image_height = size.height
+    p.has_result = True
+
+
+# ---------------------------------------------------------------------------
+# Analysis overlays
+# ---------------------------------------------------------------------------
+
+
+def _offset_from_wall(point, wall: CylindricalWall, s: float):
+    """Nudge a surface point off the wall along its normal to avoid z-fighting."""
+    n = wall.normal_at_s(s)
+    return (
+        point[0] + n[0] * SURFACE_OFFSET,
+        point[1] + n[1] * SURFACE_OFFSET,
+        point[2] + n[2] * SURFACE_OFFSET,
+    )
+
+
+def build_footprint_object(
+    context,
+    footprint: Footprint,
+    wall: CylindricalWall,
+    index: int,
+) -> bpy.types.Object | None:
+    """A filled quad grid of where one projector's image lands on the wall.
+
+    Built from the full sample grid rather than a single n-gon around the
+    perimeter: an outline that wraps a cylinder is badly non-planar, and
+    Blender's tessellation of such an n-gon collapses it to slivers. A quad
+    per grid cell is planar enough to shade correctly, and it also drops
+    cleanly to a partial mesh when part of the image misses the wall.
+    """
+    n = footprint.grid
+    hits = [s.hit for s in footprint.samples]
+    if sum(h is not None for h in hits) < 4:
+        return None
+
+    # One vertex per sampled hit; missed samples get no vertex and any quad
+    # touching them is skipped.
+    index_of: dict[int, int] = {}
+    verts: list[tuple[float, float, float]] = []
+    for i, hit in enumerate(hits):
+        if hit is None:
+            continue
+        index_of[i] = len(verts)
+        verts.append(_offset_from_wall(hit.point, wall, hit.s))
+
+    faces: list[tuple[int, int, int, int]] = []
+    for row in range(n - 1):
+        for col in range(n - 1):
+            corners = (
+                row * n + col,
+                row * n + col + 1,
+                (row + 1) * n + col + 1,
+                (row + 1) * n + col,
+            )
+            if all(c in index_of for c in corners):
+                faces.append(tuple(index_of[c] for c in corners))
+
+    if not faces:
+        return None
+
+    mesh = bpy.data.meshes.new(f"{footprint.name}_footprint")
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    mesh.validate()
+
+    obj = bpy.data.objects.new(f"PJ_Footprint_{footprint.name}", mesh)
+    obj[OWNER_KEY] = OWNER_ID
+    obj.data.materials.append(get_overlay_material(index))
+    obj.color = PALETTE[index % len(PALETTE)]
+    obj.show_wire = False
+    link_only_to(obj, get_collection(context, COLLECTION_ANALYSIS))
+    return obj
+
+
+def build_frustum_object(
+    context,
+    footprint: Footprint,
+    index: int,
+) -> bpy.types.Object | None:
+    """The light cone: lens to the four image corners, plus the corner loop.
+
+    Corners come from the frustum itself at the axial throw distance rather
+    than from where rays landed, so the cone still draws all four edges when
+    part of the image overshoots the wall.
+    """
+    from .core.throw import frustum_corners_local
+
+    distance = footprint.center_distance
+    if distance <= 0.0:
+        landed = footprint_corners_world(footprint)
+        if len(landed) < 2:
+            return None
+        distance = max(
+            vec_length(sub_vec(c, footprint.pose.origin)) for c in landed
+        )
+
+    pose = footprint.pose
+    corners = [
+        pose.local_to_world_point(c)
+        for c in frustum_corners_local(distance, footprint.spec)
+    ]
+
+    origin = pose.origin
+    verts = [origin] + corners
+    edges = [(0, i + 1) for i in range(len(corners))]
+    for i in range(len(corners)):
+        edges.append((i + 1, (i + 1) % len(corners) + 1))
+
+    mesh = bpy.data.meshes.new(f"{footprint.name}_frustum")
+    mesh.from_pydata(verts, edges, [])
+    mesh.update()
+
+    obj = bpy.data.objects.new(f"PJ_Frustum_{footprint.name}", mesh)
+    obj[OWNER_KEY] = OWNER_ID
+    obj.color = PALETTE[index % len(PALETTE)]
+    obj.display_type = "WIRE"
+    obj.hide_render = True
+    link_only_to(obj, get_collection(context, COLLECTION_ANALYSIS))
+    return obj
+
+
+def _band_geometry(
+    wall: CylindricalWall,
+    spans: Iterable[tuple[float, float, float, float]],
+    offset_scale: float = 1.0,
+    max_segment: float = 0.25,
+) -> tuple[list[tuple[float, float, float]], list[tuple[int, int, int, int]]]:
+    """Quad strips hugging the wall over the given arc ranges.
+
+    Subdivided so no single quad spans enough arc to be visibly non-planar,
+    which is what makes a band read as a curved ribbon rather than a chord.
+    """
+    verts: list[tuple[float, float, float]] = []
+    faces: list[tuple[int, int, int, int]] = []
+    for start, end, z_start, z_end in spans:
+        width = end - start
+        if width <= 0.0 or z_end <= z_start:
+            continue
+        steps = min(MAX_BAND_SEGMENTS, max(1, int(math.ceil(width / max_segment))))
+        base = len(verts)
+        for i in range(steps + 1):
+            s = start + width * i / steps
+            n = wall.normal_at_s(s)
+            for z in (z_start, z_end):
+                p = wall.point_at(s, z)
+                verts.append(
+                    (
+                        p[0] + n[0] * SURFACE_OFFSET * offset_scale,
+                        p[1] + n[1] * SURFACE_OFFSET * offset_scale,
+                        p[2],
+                    )
+                )
+        for i in range(steps):
+            a = base + 2 * i
+            faces.append((a, a + 1, a + 3, a + 2))
+    return verts, faces
+
+
+def build_gap_object(
+    context,
+    wall: CylindricalWall,
+    gaps: Iterable,
+) -> bpy.types.Object | None:
+    """One band per uncovered arc range, so dark zones are obvious."""
+    verts, faces = _band_geometry(
+        wall,
+        [(g.start, g.end, 0.0, wall.height) for g in gaps if g.length > 0.0],
+        offset_scale=1.0,
+    )
+    if not faces:
+        return None
+
+    mesh = bpy.data.meshes.new("PJ_Gaps_mesh")
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    mesh.validate()
+
+    obj = bpy.data.objects.new("PJ_Gaps", mesh)
+    obj[OWNER_KEY] = OWNER_ID
+    mat = _owned_material("PJ_Gap", "gap", (0.05, 0.05, 0.05, 1.0))
+    obj.data.materials.append(mat)
+    obj.color = (0.05, 0.05, 0.05, 1.0)
+    link_only_to(obj, get_collection(context, COLLECTION_ANALYSIS))
+    return obj
+
+
+def build_blend_object(
+    context,
+    wall: CylindricalWall,
+    blend_zones: Iterable,
+) -> bpy.types.Object | None:
+    """A band per blend zone, offset slightly further out than the footprints."""
+    verts, faces = _band_geometry(
+        wall,
+        [
+            (cell.s_start, cell.s_end, cell.z_start, cell.z_end)
+            for zone in blend_zones
+            for cell in zone.cells
+        ],
+        offset_scale=2.5,
+    )
+    if not faces:
+        return None
+
+    mesh = bpy.data.meshes.new("PJ_BlendZones_mesh")
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    mesh.validate()
+
+    obj = bpy.data.objects.new("PJ_BlendZones", mesh)
+    obj[OWNER_KEY] = OWNER_ID
+    mat = _owned_material("PJ_Blend", "blend", (1.0, 1.0, 1.0, 1.0))
+    obj.data.materials.append(mat)
+    obj.color = (1.0, 1.0, 1.0, 1.0)
+    obj.show_wire = True
+    link_only_to(obj, get_collection(context, COLLECTION_ANALYSIS))
+    return obj

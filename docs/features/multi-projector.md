@@ -1,199 +1,162 @@
-# Multi-Projector Management
+# Multi-projector arrays
 
-The multi-projector management features allow you to work with multiple projectors in your scene, organizing them into collections, duplicating existing setups, detecting overlaps, and managing edge blending.
+How the add-on lays out several projectors across a wall, and what it can and
+cannot tell you about the result.
 
-![Multi-Projector Panel](../images/multi-projector-panel.png)
+---
 
-## Projector Collections
+## The layout arithmetic
 
-Projector collections allow you to organize related projectors into logical groups for easier management and operations.
+For `N` projectors covering an arc of length `S` with overlap fraction `f`,
+each image must cover arc width `w`:
 
-### Creating Collections
+```
+S = N·w − (N−1)·f·w        →        w = S / (N − (N−1)·f)
+```
 
-To create a new projector collection:
+Image centres are then spaced `w·(1−f)` apart, starting half an image width in
+from the wall's start:
 
-1. Navigate to the "Multi-Projector Setup" panel in the sidebar
-2. Click the "Create Collection" button
-3. Enter a name for your collection in the dialog
-4. Click "OK" to create the collection
+```
+s_i = w/2 + i·w·(1−f)
+```
 
-If you have projectors selected when creating a collection, they will be automatically added to the new collection.
+This tiles the wall exactly: the first image's left edge sits at `s = 0`, the
+last image's right edge at `s = S`, and each neighbouring pair shares exactly
+`f` of an image width.
 
-### Collection Management
+**Worked example** — the wall from the README, `S = 12.57 m`, `N = 3`,
+`f = 0.15`:
 
-The collections panel displays all available projector collections with controls for:
+```
+w   = 12.57 / (3 − 2×0.15) = 12.57 / 2.70 = 4.654 m
+s   = 2.327, 6.283, 10.239 m
+spans = 0.00–4.65, 3.96–8.61, 7.91–12.57 m
+overlaps = 0.70 m each = 15% of image width ✓
+```
 
-- **Setting the active collection**: Click the radio button next to a collection name
-- **Deleting a collection**: Click the X button next to a collection name
-- **Adding projectors to a collection**: Select projectors and click "Add Selected"
-- **Removing projectors from collections**: Select projectors and click "Remove from Collection"
+---
 
-### Collection Properties
+## Solving for where the projectors go
 
-Collections are implemented as named references stored as string properties on projector objects:
+Knowing the required image width is not enough, because a planar image landing
+on a cylinder does not have a closed-form arc width. The planner therefore
+**solves numerically**: it places a trial projector, ray-casts its frustum onto
+the wall, measures the actual arc span, and iterates
 
-- Each projector has a `pj_collection` property that stores the collection name
-- The scene maintains a list of collection names in `scene.pj_projector_collections`
-- The active collection is tracked by `scene.pj_active_collection_index`
+```
+D ← D · (1 + 0.85·(target/measured − 1))
+```
 
-## Projector Duplication
+until the span matches to within a millimetre. Damping the step keeps the
+curved-wall feedback from oscillating. It converges in a handful of iterations.
 
-The duplicator feature allows you to create copies of existing projectors with all their settings preserved.
+Two details matter for correctness:
 
-### Duplicating Projectors
+- The solve runs against a deliberately **oversized copy of the wall**. Edge
+  projectors aim at the very end of the arc, so against the real wall their
+  images would be clipped and the measured span would be wrong.
+- In **Tilt** mode the axis distance is clamped to exceed the vertical drop —
+  the optical axis is the hypotenuse over that drop, so a shorter distance is
+  geometrically impossible. A poor starting guess would otherwise abort a solve
+  that does have an answer.
 
-To duplicate a projector:
+If the clamp forces an image more than 50% away from what was asked for, the
+planner **raises** with a message naming the constraint rather than returning a
+number that ignores the request.
 
-1. Select the projector you want to duplicate
-2. Click the "Duplicate Projector" button in the main panel
-3. A new projector will be created with the same settings
-4. By default, it will be offset to the right of the original projector
+---
 
-### Duplication Options
+## Mounting modes
 
-When duplicating, you can adjust:
+| | **Level + Lens Shift** | **Tilt to Target** |
+|---|---|---|
+| Optical axis | Horizontal | Aimed at the target point |
+| Keystone | None | Yes — needs electronic correction, which costs pixels |
+| Focus uniformity | Better | Worse (wider throw spread) |
+| Limit | Required shift may exceed the lens | None geometrically |
+| Required shift | `−drop / image_height` | n/a (zero) |
 
-- **Offset Distance**: The distance between the original and duplicated projector
+Level is the preferred install and the default. The add-on computes the shift
+each projector needs and warns when it exceeds the configured lens limit,
+naming the three ways out: lower the mount, raise the image centre, or switch
+to tilt.
 
-### What Gets Duplicated
+---
 
-The following properties are preserved when duplicating a projector:
+## What the coverage report tells you
 
-- Throw distance
-- Image width
-- Throw ratio
-- Aspect ratio (width and height)
-- Collection membership
-- Rotation (relative to the original)
+The wall is rasterised in arc length × height, and each cell tested against
+every projector by **back-projecting** the cell through the lens — the exact
+inverse of the forward ray cast. (An earlier point-in-polygon test against the
+sampled outline understated coverage whenever an image spilled off the wall,
+because the outline walk closes across the missing samples.)
 
-## Overlap Detection
+| Metric | Meaning |
+|---|---|
+| **Coverage** | Fraction of total wall *area* lit by at least one projector |
+| **Horizontal coverage** | Fraction of the *arc* lit at some height |
+| **Lit band** | The height range the images actually reach |
+| **Dark bands** | Arc ranges lit by nobody at any height — real holes |
+| **Overlap** | Fraction of the wall lit by two or more, and the maximum count |
+| **Blend zones** | Per-pair overlap width, in metres and as a fraction of image width |
 
-The overlap detection system identifies where multiple projectors' projection areas intersect, which is useful for edge blending and coordinated displays.
+### Why coverage and horizontal coverage differ
 
-### Detecting Overlaps
+A 16:9 image on a 3 m wall is about 2.7 m tall. Horizontal coverage can be
+100% while area coverage is ~89%, because strips at the top and bottom are
+never lit. That is a normal consequence of a fixed aspect ratio, **not a
+gap**, and the report keeps the two separate so a sound design is not flagged
+as failing.
 
-To detect overlapping projections:
+If you need the full height, the options are a taller image (wider arc per
+projector, fewer projectors, or a shorter lens), a second stacked row, or
+accepting the letterbox.
 
-1. Position your projectors so their projection areas might intersect
-2. Make sure the projectors are in the same collection
-3. Click the "Detect Overlapping" button in the Multi-Projector panel
-4. The add-on will analyze projector positions and parameters
-5. Projectors with overlapping areas will be marked with the `pj_overlaps_with` property
+---
 
-### How Overlap Detection Works
+## Blend zones — geometry only
 
-The system uses the following criteria to determine potential overlaps:
+The add-on reports **where** images overlap and **how wide** the overlap is. It
+does **not** model the soft-edge luminance ramp a blending processor applies.
 
-1. **Collection Membership**: Projectors must be in the same collection
-2. **Throw Distance Similarity**: Projection distances should be within 20% of each other
-3. **Physical Proximity**: Projectors should be close enough for their cones to intersect
+Guidance it applies:
 
-### Viewing Overlap Information
+| Overlap | Verdict |
+|---|---|
+| < 5% of image width | Flagged — too narrow to blend reliably |
+| 10–20% | The usual working range |
+| > 50% | Flagged — you are paying for pixels you cannot use |
 
-When a projector is detected as overlapping with another:
+Triple overlap (three or more projectors on one spot) is flagged separately,
+because it is usually a placement error rather than an intentional blend.
 
-1. Select the projector
-2. Check the "Overlaps with: [projector name]" information in the projector parameters
-3. Adjust the "Edge Blend" slider to control the blending
+---
 
-## Edge Blending
+## Brightness in overlaps
 
-Edge blending allows for smooth transitions between overlapping projection areas.
+Illuminance from overlapping projectors **adds linearly**, which is correct for
+incoherent sources. So a blend zone is roughly twice as bright as the
+single-projector areas either side of it — before any blending processor pulls
+it back down.
 
-### Edge Blend Controls
+This is why the uniformity figure in the README example is 0.37: the blend
+bands are genuinely brighter than the image centres, and the wall ends are
+struck at up to 28° incidence. A real installation corrects the first with edge
+blending and lives with the second.
 
-For projectors with detected overlaps:
+All brightness figures carry the assumptions listed in the
+[feature reference](index.md#brightness--corephotometrypy) — most importantly
+**zero ambient light**.
 
-1. The "Edge Blend" slider appears in the projector parameters
-2. Values range from 0.0 (no blending) to 1.0 (full blending)
-3. Adjust the value to control how much the projectors blend in the overlap area
+---
 
-### Edge Blend Properties
+## Limits
 
-Edge blending is controlled by:
-
-- `pj_edge_blend_amount`: Float property (0.0-1.0) controlling blend amount
-- `pj_overlaps_with`: String property referencing the overlapping projector
-
-## Projector Alignment
-
-The alignment tools help you position multiple projectors in organized arrangements.
-
-### Aligning Projector Groups
-
-To align projectors in a collection:
-
-1. Select a collection in the Multi-Projector panel
-2. Click the "Align Projectors" button
-3. Adjust the spacing parameter if needed
-4. The projectors will be arranged in a horizontal row
-
-### Alignment Options
-
-The alignment tool provides:
-
-- **Spacing**: Distance between adjacent projectors in the aligned group
-
-### Alignment Behavior
-
-The alignment:
-
-1. Uses the leftmost projector's position as the starting point
-2. Sorts projectors by X position
-3. Aligns all projectors to the same Y and Z coordinates
-4. Spaces them evenly along the X axis
-5. Sets all projectors to the same rotation
-
-## Multi-Projector Statistics
-
-The Multi-Projector panel includes statistics about your projector setup:
-
-- **Total Projectors**: Number of projectors in the scene
-- **Collections**: Number of projector collections
-- **Overlapping Projectors**: Number of projectors with detected overlaps
-
-## Advanced Usage
-
-### Multi-projector Workflows
-
-Effective multi-projector workflows typically follow this pattern:
-
-1. Create and position your first projector
-2. Duplicate it to create additional projectors
-3. Organize related projectors into collections
-4. Use the alignment tools to arrange projectors
-5. Detect overlapping areas
-6. Adjust edge blending for smooth transitions
-7. Fine-tune individual projector parameters
-
-### Working with Complex Projector Arrays
-
-For complex arrangements with many projectors:
-
-1. Create separate collections for different logical groups
-2. Use parent objects or empties for additional organization
-3. Consider scripting for very large arrays (10+ projectors)
-
-## Technical Reference
-
-### Properties
-
-| Property | Type | Description |
-|----------|------|-------------|
-| `pj_collection` | String | Collection name this projector belongs to |
-| `pj_overlaps_with` | String | Name of projector this one overlaps with |
-| `pj_edge_blend_amount` | Float (0.0-1.0) | Amount of edge blending for overlaps |
-| `pj_is_active_projector` | Boolean | Whether this projector is active |
-
-### Operators
-
-| Operator | ID | Description |
-|----------|----------|-------------|
-| Duplicate Projector | `projection.duplicate_projector` | Creates a copy of selected projector |
-| Create Collection | `projection.create_projector_collection` | Creates a new projector collection |
-| Add to Collection | `projection.add_to_collection` | Adds selected projectors to active collection |
-| Remove from Collection | `projection.remove_from_collection` | Removes projectors from their collection |
-| Delete Collection | `projection.delete_collection` | Deletes the active collection |
-| Detect Overlapping | `projection.detect_overlapping` | Finds overlapping projection areas |
-| Align Projector Group | `projection.align_group` | Aligns projectors in a row |
-| Set Active Collection | `projection.set_active_collection` | Sets the active collection | 
+- Projectors are laid out **horizontally only**. Stacked rows are not planned
+  automatically; add them manually and analyse.
+- All projectors in a planned array share one specification. Mixed lenses need
+  manual placement.
+- No occlusion. A column between projector and wall is invisible to the
+  analysis.
+- No consideration of sightlines, audience positions, or shadowing by people.

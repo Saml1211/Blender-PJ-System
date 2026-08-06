@@ -48,14 +48,23 @@ Enhancement suggestions are welcome! When creating an enhancement suggestion:
 5. Run the test suite to ensure everything works
 6. Submit a pull request
 
+Before submitting, run:
+
+```bash
+ruff check blender_projection_system tests
+python -m compileall -q blender_projection_system tests
+pytest -v
+blender -b --factory-startup --python-exit-code 1 --python tests/blender_smoke.py
+```
+
 ## Style Guidelines
 
 ### Python Styleguide
 
 - Follow [PEP 8](https://www.python.org/dev/peps/pep-0008/)
 - Use 4 spaces for indentation
-- Maximum line length of 79 characters
-- Use docstrings for all functions, classes, and methods
+- Maximum configured line length of 100 characters
+- Document public APIs and non-obvious functions or classes with docstrings
 
 ### Git Commit Messages
 
@@ -83,4 +92,4 @@ This project uses labels to categorize issues and pull requests:
 - `good-first-issue`: Good for newcomers
 - `help-wanted`: Extra attention is needed
 
-Thank you for contributing to the Blender Projection System! 
+Thank you for contributing to the Blender Projection System!

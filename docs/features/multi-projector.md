@@ -29,9 +29,9 @@ last image's right edge at `s = S`, and each neighbouring pair shares exactly
 `f = 0.15`:
 
 ```text
-w   = 12.57 / (3 − 2×0.15) = 12.57 / 2.70 = 4.654 m
-s   = 2.327, 6.283, 10.239 m
-spans = 0.00–4.65, 3.96–8.61, 7.91–12.57 m
+w   = 12.57 / (3 − 2×0.15) = 12.57 / 2.70 = 4.656 m
+s   = 2.328, 6.285, 10.242 m
+spans = 0.000–4.656, 3.957–8.613, 7.914–12.570 m
 overlaps = 0.70 m each = 15% of image width ✓
 ```
 

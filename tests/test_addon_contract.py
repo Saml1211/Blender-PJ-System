@@ -166,12 +166,12 @@ def test_bl_info_declares_a_real_version_and_location():
 def test_the_extension_manifest_agrees_with_bl_info():
     import blender_projection_system as pkg
 
-    manifest = (ADDON / "blender_manifest.toml")
-    assert manifest.exists(), "Blender 4.2 extension manifest is missing"
-    text = manifest.read_text(encoding="utf-8")
+    manifest_path = ADDON / "blender_manifest.toml"
+    assert manifest_path.exists(), "Blender 4.2 extension manifest is missing"
+    manifest = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
     version = ".".join(str(p) for p in pkg.bl_info["version"])
-    assert f'version = "{version}"' in text
-    assert 'blender_version_min = "4.2.0"' in text
+    assert manifest["version"] == version
+    assert manifest["blender_version_min"] == "4.2.0"
 
 
 def test_the_extension_manifest_satisfies_blender_42_schema_basics():

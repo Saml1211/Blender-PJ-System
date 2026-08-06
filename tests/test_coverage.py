@@ -142,7 +142,7 @@ def test_blend_zones_are_ordered_left_to_right_along_the_arc(wall):
     assert [z.right for z in zones] == ["P2", "P0"]
 
 
-def test_a_narrow_blend_is_flagged_as_unusable(wall):
+def test_a_narrow_blend_zone_is_measured_as_one_centimetre(wall):
     spec = ProjectorSpec(throw_ratio=1.5)
     a = _projector_at(wall, wall.arc_length / 2, 4.5, spec, "Left")
     b = _projector_at(wall, wall.arc_length / 2, 4.5, spec, "Right")

@@ -173,7 +173,7 @@ the `PJ Targets` collection and set as the analysis target automatically.
 
 **Plan Projector Array.** You get three projectors, each hung at 3.2 m:
 
-```
+```text
 PJ_01  mount x=+1.899 y=-1.024 z=3.200   throw 5.842 m   image 4.869 × 2.739 m   shift -56.6%
 PJ_02  mount x=+2.158 y=+0.000 z=3.200   throw 5.842 m   image 4.869 × 2.739 m   shift -56.6%
 PJ_03  mount x=+1.899 y=+1.024 z=3.200   throw 5.842 m   image 4.869 × 2.739 m   shift -56.6%
@@ -183,21 +183,21 @@ PJ_03  mount x=+1.899 y=+1.024 z=3.200   throw 5.842 m   image 4.869 × 2.739 m 
 
 **Projection ▸ 3. Analysis ▸ Calculate Coverage.** The Report panel shows:
 
-```
+```text
 Wall 'PJ_CurvedWall': 12.57 m arc x 3.00 m high (37.7 m2)
-Coverage: 89.4% of wall area (33.7 m2 lit, 4.0 m2 dark)
-Horizontal coverage: 100.0% of the arc; lit band 0.25-3.00 m high
-Overlap: 8.7% of the wall, max 2 projector(s) on one spot
+Coverage: 89.0% of wall area (33.6 m2 lit, 4.1 m2 dark)
+Horizontal coverage: 100.0% of the arc; lit band 0.30-3.00 m high
+Overlap: 9.5% of the wall, max 2 projector(s) on one spot
   PJ_01: arc 0.00 - 4.65 m (4.65 m wide)
   PJ_02: arc 3.96 - 8.61 m (4.65 m wide)
   PJ_03: arc 7.91 - 12.57 m (4.65 m wide)
-  blend PJ_01 | PJ_02: 0.63 m (14% / 14% of image width)
-  blend PJ_02 | PJ_03: 0.63 m (14% / 14% of image width)
-Brightness: mean 195 nits (57.0 fL), range 145-391 nits, uniformity 0.37
+  blend PJ_01 | PJ_02: 0.70 m (15% / 15% of image width)
+  blend PJ_02 | PJ_03: 0.70 m (15% / 15% of image width)
+Brightness: mean 197 nits (57.5 fL), range 145-391 nits, uniformity 0.37
 ```
 
 Read the warnings — they are the useful part. This design reports that the
-16:9 images leave a 0.25 m unlit strip along the bottom of a 3 m wall, and that
+16:9 images leave a 0.30 m unlit strip along the bottom of a 3 m wall, and that
 illuminance uniformity is 0.37 because the wall ends are struck at up to 28°.
 Both are true and both are decisions for you, not errors.
 
@@ -228,7 +228,7 @@ centre, or switch to tilt mounting. That warning is why the quick start uses
 ## Verifying it yourself
 
 ```bash
-pip install pytest ruff
+pip install pytest==8.3.5 ruff==0.9.10
 
 ruff check blender_projection_system tests      # lint
 python -m compileall -q blender_projection_system tests

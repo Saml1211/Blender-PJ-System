@@ -17,7 +17,7 @@ from .errors import ProjectionError
 from .photometry import BrightnessReport, illuminance_at, summarize_brightness
 from .pose import Pose
 from .surfaces import CylindricalWall, SurfaceHit
-from .throw import ProjectorSpec, grid_boundary_indices, grid_uv
+from .throw import ProjectorSpec, grid_boundary_indices, grid_uv, ray_direction_local
 from .vectors import Vec3, dot, normalize, sub
 from .vectors import distance as vec_distance
 
@@ -148,8 +148,6 @@ def compute_footprint(
         raise ProjectionError(f"need at least 2 samples per axis, got {samples}")
 
     uv = grid_uv(samples)
-    from .throw import ray_direction_local  # local import keeps the module graph flat
-
     sample_list: list[FootprintSample] = []
     for u, v in uv:
         world_dir = pose.local_to_world_dir(ray_direction_local(u, v, spec))
@@ -325,8 +323,6 @@ def throw_distance_to_wall(pose: Pose, spec: ProjectorSpec, wall: CylindricalWal
     uses the perpendicular depth to the image plane, not that ray's longer
     point-to-point travel distance.
     """
-    from .throw import ray_direction_local
-
     axis = pose.local_to_world_dir(ray_direction_local(0.0, 0.0, spec))
     hit = wall.intersect_ray(pose.origin, axis)
     if hit is None:

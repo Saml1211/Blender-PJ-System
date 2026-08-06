@@ -255,7 +255,8 @@ def test_higher_sampling_converges_rather_than_drifting(curved_wall):
     pose, _o, _t = _aim_from_axis(curved_wall, 4.5, 1.75, spec)
     spans = [compute_footprint(pose, spec, curved_wall, samples=n).arc_span for n in (5, 9, 17, 33)]
     # The extents come from the image edges, which every grid includes.
-    assert spans[-1] == pytest.approx(spans[0], rel=1e-6)
+    for span in spans[1:]:
+        assert span == pytest.approx(spans[0], rel=1e-6)
 
 
 # -- derived geometry -----------------------------------------------------

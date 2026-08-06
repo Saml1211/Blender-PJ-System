@@ -177,6 +177,12 @@ def test_flat_wall_helper_is_effectively_planar():
     assert sagitta < 1e-3  # under a millimetre of bow across 4 m
 
 
+@pytest.mark.parametrize("radius", [0.0, -1.0])
+def test_flat_wall_helper_rejects_non_positive_radius(radius):
+    with pytest.raises(ProjectionError, match="wall radius must be greater than zero"):
+        flat_wall_as_cylinder(width=4.0, height=2.5, radius=radius)
+
+
 def test_wall_outline_spans_the_whole_arc(wall):
     pts = wall_outline(wall, segments=12)
     assert len(pts) == 12

@@ -318,13 +318,12 @@ class PJ_OT_aim_at_wall(Operator):
             return {"CANCELLED"}
         z = context.scene.pj.image_center_height
         projectors = [o for o in context.selected_objects if o.pj_projector.is_projector]
-        projectors.sort(
-            key=lambda o: (
-                wall.project_point(tuple(o.matrix_world.translation)).s
-                if wall.project_point(tuple(o.matrix_world.translation)) is not None
-                else wall.arc_length * 0.5
-            )
-        )
+
+        def projected_s(obj):
+            hit = wall.project_point(tuple(obj.matrix_world.translation))
+            return hit.s if hit is not None else wall.arc_length * 0.5
+
+        projectors.sort(key=projected_s)
 
         for i, obj in enumerate(projectors):
             if self.spread and len(projectors) > 1:

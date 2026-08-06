@@ -18,6 +18,7 @@ from __future__ import annotations
 import math
 import os
 import sys
+from dataclasses import replace
 
 import bpy
 import mathutils
@@ -86,6 +87,7 @@ def main() -> None:
 
     expected_arc = 8.0 * math.radians(90.0)
     from blender_projection_system import visualization as viz
+    from blender_projection_system.core.errors import ProjectionError
 
     core_wall = viz.wall_from_object(wall)
     check(approx(core_wall.arc_length, expected_arc), f"arc length {core_wall.arc_length:.3f} m")
@@ -108,7 +110,7 @@ def main() -> None:
     bpy.context.view_layer.update()
     try:
         viz.wall_from_object(wall)
-    except Exception as exc:
+    except ProjectionError as exc:
         check(
             "world transform" in str(exc),
             f"inherited wall rotation is rejected ({exc})",
@@ -154,6 +156,16 @@ def main() -> None:
     check(bpy.ops.projection.plan_array() == {"FINISHED"}, "plan_array finished")
 
     projectors = [o for o in scene.objects if o.pj_projector.is_projector]
+
+    original_spec = viz.spec_from_object(projectors[0])
+    ranged_spec = replace(original_spec, throw_ratio_min=0.8, throw_ratio_max=1.6)
+    viz.apply_spec_to_object(projectors[0], ranged_spec, projectors[0].pj_projector.mount_mode)
+    round_trip_spec = viz.spec_from_object(projectors[0])
+    check(
+        approx(round_trip_spec.throw_ratio_min, 0.8)
+        and approx(round_trip_spec.throw_ratio_max, 1.6),
+        "projector lens range survives the Blender object round trip",
+    )
     check(len(projectors) == 3, f"three projectors created (got {len(projectors)})")
     check(all(o.type == "CAMERA" for o in projectors), "projectors are camera objects")
     check(
@@ -262,14 +274,15 @@ def main() -> None:
 
     # Re-run the core maths directly and require the same answer, so a silent
     # divergence between the Blender layer and core/ cannot pass.
+    # Private adapter coupling is intentional here: the smoke test verifies the
+    # same Blender-matrix conversion used by the operator layer.
     from blender_projection_system.core.coverage import analyze_coverage
     from blender_projection_system.core.footprint import compute_footprint
+    from blender_projection_system.operators import _pose_from_matrix
 
     poses = []
     for o in sorted(projectors, key=lambda o: o.name):
         m = o.matrix_world
-        from blender_projection_system.operators import _pose_from_matrix
-
         poses.append(
             (
                 _pose_from_matrix(m),

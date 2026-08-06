@@ -38,8 +38,9 @@ height and arc remain editable. **Edits take effect on the next Calculate
 Coverage** — the analysis is not live.
 
 > The wall's **position** comes from its object location, so you can move it in
-> the viewport. Its **rotation is ignored**; rotating the object will not
-> rotate the analysis.
+> the viewport. Rotated walls and walls with unapplied scale or shear are
+> rejected by analysis; clear or apply those transforms before calculating
+> coverage.
 
 ---
 

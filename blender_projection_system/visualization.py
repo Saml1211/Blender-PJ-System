@@ -253,7 +253,7 @@ def configure_camera(obj: bpy.types.Object, spec, throw_distance: float) -> None
     cam = obj.data
     from .core.throw import half_angles
 
-    th, tv = half_angles(spec)
+    th, _ = half_angles(spec)
     cam.type = "PERSP"
     cam.sensor_fit = "HORIZONTAL"
     cam.angle_x = 2.0 * th
@@ -263,9 +263,6 @@ def configure_camera(obj: bpy.types.Object, spec, throw_distance: float) -> None
     cam.show_limits = True
     cam.clip_start = 0.05
     cam.clip_end = max(10.0, throw_distance * 2.0)
-    # Silence the unused-variable lint while keeping the vertical angle handy
-    # for anyone reading this in the console.
-    cam["pj_v_half_angle_deg"] = math.degrees(tv)
 
 
 def apply_spec_to_object(obj: bpy.types.Object, spec, mode: str) -> None:
@@ -280,6 +277,8 @@ def apply_spec_to_object(obj: bpy.types.Object, spec, mode: str) -> None:
     p.lens_shift_h = spec.lens_shift_h
     p.max_lens_shift_v = spec.max_lens_shift_v
     p.max_lens_shift_h = spec.max_lens_shift_h
+    p.throw_ratio_min = spec.throw_ratio_min
+    p.throw_ratio_max = spec.throw_ratio_max
     p.mount_mode = mode
 
 

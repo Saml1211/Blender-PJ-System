@@ -10,7 +10,7 @@ a module in `blender_projection_system/core/` and to tests that import it.
 `TR = D / W`, with `W = D / TR`, `D = W · TR`, and `H = W / aspect`.
 
 Field of view comes from the same relationship: `tan(θ_h) = 1 / (2·TR)`, and
-the vertical half-angle divides that by the aspect ratio.
+the vertical half-angle follows `tan(θ_v) = tan(θ_h) / aspect`.
 
 **Edge cases raise instead of returning infinity.** v0.1 returned
 `float('inf')` for a zero image width, which then propagated silently into the
@@ -99,8 +99,8 @@ Two mounting modes:
 
 | Mode | Behaviour | Trade-off |
 |---|---|---|
-| **Level + Lens Shift** | Optical axis stays horizontal; lens shift moves the image down. | No keystone, even focus. Fails when the required shift exceeds the lens. |
-| **Tilt to Target** | Projector tilts to aim at the target point. | Always geometrically possible; introduces keystone that costs pixels to correct. |
+| **Level + Lens Shift** | Optical axis stays horizontal; lens shift moves the image down. | No keystone, even focus. Warns when the required shift exceeds the configured lens limit. |
+| **Tilt to Target** | Projector tilts to aim at the target point. | Avoids lens shift, but can be geometrically infeasible; successful layouts introduce keystone. |
 
 Array planning distributes *N* projectors across the wall so that
 `arc = N·w − (N−1)·f·w` for overlap fraction `f`, then **solves numerically**

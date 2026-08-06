@@ -72,11 +72,6 @@ class ProjectorSpec:
         require_finite("maximum horizontal lens shift", self.max_lens_shift_h)
         require_finite("minimum throw ratio", self.throw_ratio_min)
         require_finite("maximum throw ratio", self.throw_ratio_max)
-        if self.aspect_w <= 0 or self.aspect_h <= 0:
-            raise ProjectionError(
-                f"aspect ratio components must be positive, got "
-                f"{self.aspect_w}:{self.aspect_h}"
-            )
         if self.lumens < 0:
             raise ProjectionError(f"lumens must not be negative, got {self.lumens}")
         if self.max_lens_shift_v < 0 or self.max_lens_shift_h < 0:

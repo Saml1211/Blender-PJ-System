@@ -29,6 +29,12 @@ class SurfaceHit:
 
     point: Vec3
     distance: float
+    """Distance supplied by the producing operation, in metres.
+
+    Ray intersections report travel from the ray origin. ``project_point``
+    reports radial snap offset instead; only ray-intersection hits are valid
+    inputs to inverse-square photometry.
+    """
     s: float
     z: float
     normal: Vec3
@@ -243,6 +249,7 @@ def flat_wall_as_cylinder(width: float, height: float, radius: float = 5000.0) -
     numbers without writing a second surface type.
     """
     require_positive("wall width", width)
+    require_positive("wall radius", radius)
     half_sweep = (width / radius) / 2.0
     return CylindricalWall(
         base_center=(0.0, 0.0, 0.0),

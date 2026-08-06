@@ -316,7 +316,8 @@ def compute_blend_zones(
                     continue
                 for iz in range(grid_z):
                     z = (iz + 0.5) * dz
-                    if a.covers(wall.point_at(s_eval, z)) and b.covers(wall.point_at(s_eval, z)):
+                    point = wall.point_at(s_eval, z)
+                    if a.covers(point) and b.covers(point):
                         cells_by_column.setdefault(i_s, []).append(
                             CoverageCell(
                                 s_eval - 0.5 * ds,

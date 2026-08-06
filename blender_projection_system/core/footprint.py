@@ -175,8 +175,9 @@ def compute_footprint(
         )
         return fp
 
-    fp.s_min = min(h.s for h in hits)
-    fp.s_max = max(h.s for h in hits)
+    arc_values = _minimal_arc_values([h.s for h in hits], wall)
+    fp.s_min = min(arc_values)
+    fp.s_max = max(arc_values)
     fp.z_min = min(h.z for h in hits)
     fp.z_max = max(h.z for h in hits)
     fp.min_distance = min(h.distance for h in hits)
@@ -224,6 +225,24 @@ def _center_hit(fp: Footprint) -> SurfaceHit | None:
     return best.hit if best else None
 
 
+def _minimal_arc_values(values: Sequence[float], wall: CylindricalWall) -> list[float]:
+    """Unwrap full-circle coordinates across the seam to their shortest span."""
+    if len(values) < 2 or wall.sweep < 2.0 * math.pi - 1e-9:
+        return list(values)
+    circumference = wall.arc_length
+    ordered = sorted(value % circumference for value in values)
+    gaps = [
+        (
+            (ordered[(i + 1) % len(ordered)] - ordered[i]) % circumference,
+            i,
+        )
+        for i in range(len(ordered))
+    ]
+    _, gap_index = max(gaps)
+    start = ordered[(gap_index + 1) % len(ordered)]
+    return [value if value >= start else value + circumference for value in ordered]
+
+
 def _boundary(fp: Footprint) -> tuple[list[tuple[float, float]], list[Vec3]]:
     """Perimeter polygon of the footprint in wall ``(s, z)`` coords.
 
@@ -236,7 +255,11 @@ def _boundary(fp: Footprint) -> tuple[list[tuple[float, float]], list[Vec3]]:
         hit = fp.samples[idx].hit
         if hit is None:
             continue
-        poly.append((hit.s, hit.z))
+        s = hit.s
+        if fp.wall.sweep >= 2.0 * math.pi - 1e-9 and fp.arc_span < fp.wall.arc_length:
+            midpoint = 0.5 * (fp.s_min + fp.s_max)
+            s += round((midpoint - s) / fp.wall.arc_length) * fp.wall.arc_length
+        poly.append((s, hit.z))
         pts.append(hit.point)
     return poly, pts
 

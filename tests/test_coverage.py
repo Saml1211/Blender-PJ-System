@@ -215,6 +215,23 @@ def test_vertically_disjoint_images_do_not_report_a_blend_zone(wall):
     assert report.blend_zones == []
 
 
+def test_full_circle_blend_crossing_the_seam_stays_one_narrow_zone():
+    wall = CylindricalWall(
+        radius=8.0,
+        height=3.0,
+        angle_start=-math.pi,
+        angle_end=math.pi,
+    )
+    spec = ProjectorSpec(throw_ratio=2.0)
+    left = _projector_at(wall, wall.arc_length - 0.25, 3.0, spec, "Left")
+    right = _projector_at(wall, 0.25, 3.0, spec, "Right")
+    zones = compute_blend_zones([left, right], wall=wall, grid_s=240, grid_z=30)
+
+    assert len(zones) == 1
+    assert 0.0 < zones[0].width < 3.0
+    assert zones[0].cells
+
+
 @pytest.mark.parametrize("grid_s,grid_z", [(0, 10), (10, 0), (-1, 10)])
 def test_invalid_grid_dimensions_raise_projection_error(wall, grid_s, grid_z):
     with pytest.raises(ProjectionError, match="grid dimensions"):

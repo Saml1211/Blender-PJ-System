@@ -64,6 +64,28 @@ def test_a_near_flat_wall_reproduces_the_throw_formula_image_size():
     assert fp.center_distance == pytest.approx(distance, rel=1e-4)
 
 
+def test_full_circle_footprint_crossing_the_seam_keeps_its_narrow_arc_span():
+    wall = CylindricalWall(
+        radius=8.0,
+        height=3.0,
+        angle_start=-math.pi,
+        angle_end=math.pi,
+    )
+    spec = ProjectorSpec(throw_ratio=1.5)
+    target = wall.point_at(0.0, 1.5)
+    inward = wall.normal_at_s(0.0)
+    origin = (
+        target[0] + inward[0] * 4.0,
+        target[1] + inward[1] * 4.0,
+        target[2],
+    )
+    fp = compute_footprint(look_at(origin, target), spec, wall, samples=11)
+
+    assert fp.hit_ratio == 1.0
+    assert 1.0 < fp.arc_span < 5.0
+    assert max(s for s, _z in fp.boundary) - min(s for s, _z in fp.boundary) < 5.0
+
+
 @pytest.mark.parametrize("throw_ratio", [0.8, 1.2, 2.5])
 def test_flat_wall_image_width_tracks_throw_ratio(throw_ratio):
     wall = flat_wall_as_cylinder(width=60.0, height=30.0, radius=100000.0)

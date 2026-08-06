@@ -271,11 +271,29 @@ def compute_blend_zones(
     so horizontally aligned but vertically disjoint images are not called a
     blend. The no-wall form remains a quick extent-only helper.
     """
-    ordered = sorted(footprints, key=lambda f: (f.s_min + f.s_max) * 0.5)
+    full_circle = wall is not None and wall.sweep >= 2.0 * math.pi - 1e-9
+    if full_circle:
+        circumference = wall.arc_length
+        ordered = sorted(
+            footprints,
+            key=lambda f: ((f.s_min + f.s_max) * 0.5) % circumference,
+        )
+        pairs = list(zip(ordered, ordered[1:], strict=False))
+        if len(ordered) > 2:
+            pairs.append((ordered[-1], ordered[0]))
+    else:
+        circumference = 0.0
+        ordered = sorted(footprints, key=lambda f: (f.s_min + f.s_max) * 0.5)
+        pairs = list(zip(ordered, ordered[1:], strict=False))
     zones: list[BlendZone] = []
-    for a, b in zip(ordered, ordered[1:], strict=False):
+    for a, b in pairs:
         ia = Interval(a.s_min, a.s_max)
         ib = Interval(b.s_min, b.s_max)
+        if full_circle:
+            center_a = 0.5 * (ia.start + ia.end)
+            center_b = 0.5 * (ib.start + ib.end)
+            shift = round((center_a - center_b) / circumference) * circumference
+            ib = Interval(ib.start + shift, ib.end + shift)
         common = ia.intersect(ib)
         if common is None or common.length <= 0.0:
             continue
@@ -288,34 +306,58 @@ def compute_blend_zones(
             cells_by_column: dict[int, list[CoverageCell]] = {}
             for i_s in range(grid_s):
                 s = (i_s + 0.5) * ds
-                if not common.start <= s <= common.end:
+                s_eval = (
+                    s + round((0.5 * (common.start + common.end) - s) / circumference) * circumference
+                    if full_circle
+                    else s
+                )
+                if not common.start <= s_eval <= common.end:
                     continue
                 for iz in range(grid_z):
                     z = (iz + 0.5) * dz
-                    if a.covers(wall.point_at(s, z)) and b.covers(wall.point_at(s, z)):
+                    if a.covers(wall.point_at(s_eval, z)) and b.covers(wall.point_at(s_eval, z)):
                         cells_by_column.setdefault(i_s, []).append(
-                            CoverageCell(i_s * ds, (i_s + 1) * ds, iz * dz, (iz + 1) * dz)
+                            CoverageCell(
+                                s_eval - 0.5 * ds,
+                                s_eval + 0.5 * ds,
+                                iz * dz,
+                                (iz + 1) * dz,
+                            )
                         )
-            columns = sorted(cells_by_column)
+            columns = sorted(
+                cells_by_column,
+                key=lambda column: cells_by_column[column][0].s_start,
+            )
             intervals: list[Interval] = []
             run_start: int | None = None
             previous: int | None = None
             for column in columns:
                 if run_start is None:
                     run_start = column
-                elif previous is not None and column != previous + 1:
-                    intervals.append(Interval(run_start * ds, (previous + 1) * ds))
+                elif previous is not None and (
+                    cells_by_column[column][0].s_start
+                    - cells_by_column[previous][0].s_start
+                    > ds * 1.5
+                ):
+                    start_s = min(cell.s_start for cell in cells_by_column[run_start])
+                    end_s = max(cell.s_end for cell in cells_by_column[previous])
+                    intervals.append(Interval(start_s, end_s))
                     run_start = column
                 previous = column
             if run_start is not None and previous is not None:
-                intervals.append(Interval(run_start * ds, (previous + 1) * ds))
+                start_s = min(cell.s_start for cell in cells_by_column[run_start])
+                end_s = max(cell.s_end for cell in cells_by_column[previous])
+                intervals.append(Interval(start_s, end_s))
             interval_cells = [
                 (
                     interval,
                     tuple(
                         cell
                         for column, column_cells in cells_by_column.items()
-                        if interval.start <= (column + 0.5) * ds <= interval.end
+                        if any(
+                            interval.start <= cell.s_start + 0.5 * ds <= interval.end
+                            for cell in column_cells
+                        )
                         for cell in column_cells
                     ),
                 )

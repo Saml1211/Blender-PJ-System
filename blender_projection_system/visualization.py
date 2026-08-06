@@ -160,13 +160,15 @@ def get_overlay_material(index: int) -> bpy.types.Material:
 
 def wall_from_object(obj: bpy.types.Object) -> CylindricalWall:
     """Rebuild the pure-math wall description from a tagged Blender object."""
-    if any(abs(value - 1.0) > 1e-6 for value in obj.scale):
+    world_basis = obj.matrix_world.to_3x3()
+    if any(
+        abs(world_basis[row][column] - (1.0 if row == column else 0.0)) > 1e-6
+        for row in range(3)
+        for column in range(3)
+    ):
         raise ProjectionError(
-            f"'{obj.name}' has object scale applied; use Ctrl+A > Scale before analysis"
-        )
-    if any(abs(value) > 1e-6 for value in obj.rotation_euler):
-        raise ProjectionError(
-            f"'{obj.name}' is rotated; cylindrical targets must remain vertical and unrotated"
+            f"'{obj.name}' has rotation, scale or shear in its world transform; "
+            "remove inherited transforms and use Ctrl+A before analysis"
         )
     props = obj.pj_wall
     loc = obj.matrix_world.translation

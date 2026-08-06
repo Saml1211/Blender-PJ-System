@@ -25,7 +25,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field, replace
 
-from .errors import ProjectionError, require_positive
+from .errors import ProjectionError, require_finite, require_positive
 from .footprint import DEFAULT_SAMPLES, Footprint, compute_footprint
 from .pose import Pose, level_pose, look_at
 from .surfaces import CylindricalWall
@@ -276,6 +276,18 @@ def plan_projector(
     if mode not in MOUNT_MODES:
         raise ProjectionError(f"unknown mount mode {mode!r}; expected one of {MOUNT_MODES}")
     target_z = wall.height * 0.5 if image_center_height is None else image_center_height
+    require_finite("image centre height", target_z)
+    if not 0.0 <= target_z <= wall.height:
+        raise ProjectionError(
+            f"image centre height must be between 0.00 and {wall.height:.2f} m "
+            f"above the wall base, got {target_z:.2f} m"
+        )
+    require_finite("image centre arc position", arc_center)
+    if not 0.0 <= arc_center <= wall.arc_length:
+        raise ProjectionError(
+            f"image centre arc position must be between 0.00 and "
+            f"{wall.arc_length:.2f} m, got {arc_center:.2f} m"
+        )
 
     distance, pose, spec, achieved_width = solve_standoff(
         wall,

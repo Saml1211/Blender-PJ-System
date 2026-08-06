@@ -100,6 +100,25 @@ def main() -> None:
     wall.pj_wall.radius = 8.0
     viz.sync_generated_wall_mesh(wall)
 
+    parent = bpy.data.objects.new("Transformed_Wall_Parent", None)
+    scene.collection.objects.link(parent)
+    original_matrix = wall.matrix_world.copy()
+    wall.parent = parent
+    parent.rotation_euler.z = math.radians(10.0)
+    bpy.context.view_layer.update()
+    try:
+        viz.wall_from_object(wall)
+    except Exception as exc:
+        check(
+            "world transform" in str(exc),
+            f"inherited wall rotation is rejected ({exc})",
+        )
+    else:
+        check(False, "inherited wall rotation is rejected")
+    wall.parent = None
+    wall.matrix_world = original_matrix
+    bpy.data.objects.remove(parent, do_unlink=True)
+
     scene.pj.target_wall = None
     bpy.context.view_layer.objects.active = wall
     wall.select_set(True)

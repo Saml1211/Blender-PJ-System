@@ -182,6 +182,19 @@ def test_an_unknown_mount_mode_is_rejected(wall, spec):
         plan_projector(wall, spec, 4.0, 3.0, mount_height=3.0, mode="SIDEWAYS")
 
 
+@pytest.mark.parametrize("height", [-0.01, 3.01, math.inf, math.nan])
+def test_image_centre_must_be_on_the_wall(wall, spec, height):
+    with pytest.raises(ProjectionError, match="image centre height"):
+        plan_projector(
+            wall,
+            spec,
+            wall.arc_length / 2,
+            4.0,
+            mount_height=3.0,
+            image_center_height=height,
+        )
+
+
 def test_excessive_lens_shift_is_warned_about_not_silently_accepted(wall):
     tight = ProjectorSpec(throw_ratio=1.2, max_lens_shift_v=0.05)
     p = plan_projector(

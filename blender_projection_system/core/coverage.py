@@ -171,6 +171,7 @@ def analyze_coverage(
 
     usable = [fp for fp in footprints if fp.hit_ratio > 0.0]
     if not usable:
+        report.gaps = [Interval(0.0, wall.arc_length)]
         report.warnings.append(
             "no projector footprint lands on the wall; coverage is zero"
         )

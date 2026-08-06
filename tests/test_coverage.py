@@ -90,6 +90,8 @@ def test_no_usable_footprints_reports_zero_coverage(wall):
     )
     report = analyze_coverage([missed], wall, grid_s=20, grid_z=6)
     assert report.covered_fraction == 0.0
+    assert report.horizontal_coverage == 0.0
+    assert report.gaps == [Interval(0.0, wall.arc_length)]
     assert report.brightness is None
     assert any("coverage is zero" in w for w in report.warnings)
 

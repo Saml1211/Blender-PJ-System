@@ -321,6 +321,9 @@ def store_footprint_results(obj: bpy.types.Object, footprint: Footprint, gain: f
     p.calc_arc_span = footprint.arc_span
     p.calc_hit_ratio = footprint.hit_ratio
     p.calc_max_incidence_deg = math.degrees(footprint.max_incidence)
+    p.calc_mean_nits = 0.0
+    p.calc_image_width = 0.0
+    p.calc_image_height = 0.0
     if footprint.hits():
         p.calc_mean_nits = footprint.brightness(gain).mean_nits
     from .core.throw import image_size

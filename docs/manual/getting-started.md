@@ -28,6 +28,9 @@ tab.
 
 ### Developing on it
 
+The paths below show Blender `4.2`. Replace that version segment with the
+version of Blender you are actively running (for example, `4.3`) when needed.
+
 Symlink the package instead, so edits apply on **F3 ▸ Reload Scripts**:
 
 ```powershell

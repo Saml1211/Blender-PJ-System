@@ -63,8 +63,8 @@ MOUNT_MODE_ITEMS = [
     (
         MODE_TILT,
         "Tilt to Target",
-        "Tilt the projector to aim at the wall. Always possible, but introduces "
-        "keystone that must be corrected electronically",
+        "Tilt the projector to aim at the wall without lens shift. Feasible layouts "
+        "introduce keystone that must be corrected electronically",
         1,
     ),
 ]

@@ -6,8 +6,8 @@ These are first-order engineering estimates, not a photometric simulation.
 Every function here assumes:
 
 1. **Uniform intensity across the frustum.** Real projectors fall off toward
-   the corners; ANSI 9-point uniformity of 70-90% is typical, so corner
-   illuminance is optimistic here by roughly that margin.
+   the corners; a 70-90% corner/minimum-to-reference uniformity result means a
+   roughly 10-30% shortfall that this estimate does not model.
 2. **Rated lumens are delivered.** No lamp/laser ageing, no eco mode, no
    colour-mode derate. Divide ``lumens`` yourself to model those.
 3. **A Lambertian screen** of the given gain, so luminance is

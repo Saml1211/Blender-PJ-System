@@ -10,6 +10,11 @@ from __future__ import annotations
 import bpy
 from bpy.types import Panel
 
+from . import visualization as viz
+from .core.errors import ProjectionError
+from .core.photometry import luminance_nits, nominal_screen_illuminance
+from .core.throw import ImageSize, ProjectorSpec, aspect_ratio, image_height_from_width
+
 CATEGORY = "Projection"
 
 
@@ -57,8 +62,11 @@ class PJ_PT_target(_Base):
         row.prop(props, "arc_end_deg", text="End")
         col.prop(props, "concave")
 
-        sweep = abs(props.arc_end_deg - props.arc_start_deg)
-        arc_length = props.radius * (sweep * 3.14159265 / 180.0)
+        try:
+            arc_length = viz.wall_from_object(wall_obj).arc_length
+        except ProjectionError as exc:
+            box.label(text=str(exc), icon="ERROR")
+            return
         info = box.column(align=True)
         info.label(text=f"Arc length: {arc_length:.2f} m")
         info.label(text=f"Surface area: {arc_length * props.height:.1f} m2")
@@ -245,15 +253,26 @@ class PJ_PT_calculator(_Base):
         col.prop(pj, "calc_throw_ratio")
 
         if pj.aspect_h > 0 and pj.calc_width > 0:
-            height = pj.calc_width * pj.aspect_h / pj.aspect_w
-            diagonal = (pj.calc_width**2 + height**2) ** 0.5
+            aspect = aspect_ratio(pj.aspect_w, pj.aspect_h)
+            height = image_height_from_width(pj.calc_width, aspect)
+            image = ImageSize(pj.calc_width, height)
             box = layout.box()
             box.label(text=f"Image height: {height:.3f} m")
-            box.label(text=f"Diagonal: {diagonal:.3f} m ({diagonal * 39.3701:.0f} in)")
+            box.label(
+                text=f"Diagonal: {image.diagonal:.3f} m ({image.diagonal * 39.3701:.0f} in)"
+            )
             if pj.lumens > 0:
-                lux = pj.lumens / (pj.calc_width * height)
+                spec = ProjectorSpec(
+                    throw_ratio=pj.calc_throw_ratio,
+                    aspect_w=pj.aspect_w,
+                    aspect_h=pj.aspect_h,
+                    lumens=pj.lumens,
+                )
+                lux = nominal_screen_illuminance(spec, image.area)
                 box.label(text=f"Mean illuminance: {lux:.0f} lux")
-                box.label(text=f"Mean luminance: {lux * pj.screen_gain / 3.14159:.0f} nits")
+                box.label(
+                    text=f"Mean luminance: {luminance_nits(lux, pj.screen_gain):.0f} nits"
+                )
             box.label(text="Flat screen, no ambient light.", icon="INFO")
 
 

@@ -151,8 +151,9 @@ ratio.
 ### The five assumptions — printed with every report
 
 1. Uniform intensity across the frustum. Real projectors fall off toward the
-   corners; ANSI 9-point uniformity of 70–90% is typical, so corner figures
-   here are optimistic by roughly that margin.
+   corners; ANSI 9-point uniformity commonly expresses corner or minimum output
+   relative to a center/reference value. A 70–90% result therefore represents
+   roughly a 10–30% corner-output shortfall, which this estimate does not model.
 2. Rated lumens delivered in full — no lamp ageing, eco mode, or colour-mode
    derate. Divide the lumens input yourself to model those.
 3. A Lambertian screen at the stated gain. High-gain screens only deliver rated

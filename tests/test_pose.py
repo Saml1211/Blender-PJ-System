@@ -51,6 +51,11 @@ def test_look_at_rejects_a_coincident_target():
         look_at((1.0, 1.0, 1.0), (1.0, 1.0, 1.0))
 
 
+def test_normalize_reports_zero_vectors_as_projection_errors():
+    with pytest.raises(ProjectionError, match="zero-length"):
+        normalize((0.0, 0.0, 0.0))
+
+
 def test_roll_rotates_about_the_optical_axis():
     straight = look_at((0.0, 0.0, 2.0), (5.0, 0.0, 2.0))
     rolled = look_at((0.0, 0.0, 2.0), (5.0, 0.0, 2.0), roll=math.pi / 2)

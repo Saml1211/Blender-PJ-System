@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import math
 
+from .errors import ProjectionError
+
 Vec3 = tuple[float, float, float]
 
 EPS = 1e-9
@@ -48,7 +50,7 @@ def distance(a: Vec3, b: Vec3) -> float:
 def normalize(a: Vec3) -> Vec3:
     n = length(a)
     if n < EPS:
-        raise ValueError("cannot normalize a zero-length vector")
+        raise ProjectionError("cannot normalize a zero-length vector")
     return (a[0] / n, a[1] / n, a[2] / n)
 
 

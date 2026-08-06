@@ -108,7 +108,9 @@ the validation command below.
 3. Open the 3D viewport sidebar with <kbd>N</kbd> and select the
    **Projection** tab.
 
-For development, symlink instead of copying so edits take effect on reload:
+For development, symlink instead of copying so edits take effect on reload.
+The examples use Blender `4.2`; replace that path segment with your active
+Blender version when needed:
 
 ```powershell
 # Windows (run as administrator)

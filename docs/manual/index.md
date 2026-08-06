@@ -64,7 +64,7 @@ The specification used when generating an array.
 
 | Field | Meaning |
 |---|---|
-| **Mount Mode** | *Level + Lens Shift* keeps the axis horizontal and shifts the lens down — no keystone, but needs shift range. *Tilt to Target* aims the projector at the wall — always possible, but introduces keystone |
+| **Mount Mode** | *Level + Lens Shift* keeps the axis horizontal and shifts the lens down — no keystone, but needs shift range. *Tilt to Target* avoids lens shift and aims at the wall, but still raises a projection error when the requested image width is geometrically unreachable; successful tilted layouts introduce keystone |
 | **Mount Height** | Height of the mounting point, e.g. the ceiling |
 | **Image Centre Above Wall Base** | Local height above the wall's bottom edge where image centres should sit |
 

@@ -11,9 +11,9 @@ from __future__ import annotations
 import ast
 import pathlib
 import re
+import tomllib
 
 import pytest
-import tomllib
 
 ADDON = pathlib.Path(__file__).resolve().parent.parent / "blender_projection_system"
 CORE = ADDON / "core"
@@ -277,12 +277,29 @@ def test_property_update_callbacks_never_call_operators():
     """Blender forbids bpy.ops from a property update callback; it corrupts the
     undo stack and can crash on depsgraph evaluation."""
     tree = _parse(ADDON / "properties.py")
+    inspected = 0
     for node in tree.body:
-        if not isinstance(node, ast.FunctionDef) or not node.name.startswith("update_"):
+        if not isinstance(node, ast.FunctionDef) or not node.name.startswith("_update_"):
             continue
+        inspected += 1
         for call in ast.walk(node):
             if isinstance(call, ast.Call):
                 src = ast.unparse(call.func)
                 assert not src.startswith("bpy.ops"), (
                     f"{node.name} calls {src}; property callbacks must not run operators"
                 )
+    assert inspected, "no update callbacks were inspected; the name filter has drifted"
+
+
+def test_ui_calculator_delegates_to_production_core_helpers():
+    """The panel must display the same geometry and photometry the operators use."""
+    source = (ADDON / "ui.py").read_text(encoding="utf-8")
+    for helper in (
+        "wall_from_object",
+        "aspect_ratio",
+        "image_height_from_width",
+        "nominal_screen_illuminance",
+        "luminance_nits",
+    ):
+        assert helper in source, f"UI no longer delegates {helper} to production code"
+    assert "3.14159" not in source

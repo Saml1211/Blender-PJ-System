@@ -216,6 +216,8 @@ def main() -> None:
         any("assumptions" in t.lower() for t in lines),
         "report carries its photometric assumptions",
     )
+    coverage_line = next(t for t in lines if t.startswith("Coverage:"))
+    operator_coverage = float(coverage_line.split()[1].rstrip("%")) / 100.0
 
     analysis = viz.get_collection(bpy.context, viz.COLLECTION_ANALYSIS)
     check(analysis is not None, "PJ Analysis collection exists")
@@ -276,11 +278,49 @@ def main() -> None:
             )
         )
     fps = [compute_footprint(p, s, core_wall, samples=9, name=n) for p, s, n in poses]
-    report = analyze_coverage(fps, core_wall, grid_s=140, grid_z=28)
+    report = analyze_coverage(fps, core_wall, grid_s=pj.grid_s, grid_z=pj.grid_z)
+    check(
+        approx(report.covered_fraction, operator_coverage, tol=0.0006),
+        "operator coverage matches a direct production-core calculation",
+    )
     check(report.horizontal_coverage > 0.99, f"arc fully covered ({report.horizontal_coverage:.3f})")
     check(report.gaps == [], f"no dark bands (got {len(report.gaps)})")
     check(len(report.blend_zones) == 2, f"two blend zones (got {len(report.blend_zones)})")
     check(report.max_overlap_count == 2, f"no triple overlap (max {report.max_overlap_count})")
+
+    # A no-hit reanalysis must not retain photometry or image dimensions from
+    # the previous successful calculation, and it must not invent assumptions.
+    from blender_projection_system.core.pose import look_at
+
+    original_matrices = [o.matrix_world.copy() for o in projectors]
+    for o in projectors:
+        loc = tuple(o.matrix_world.translation)
+        away = look_at(loc, (loc[0] - 1.0, loc[1], loc[2]))
+        o.matrix_world = viz.pose_matrix(away.origin, away.basis_columns())
+    check(
+        bpy.ops.projection.analyze(visualize=False) == {"FINISHED"},
+        "no-hit reanalysis finishes",
+    )
+    dark_lines = [e.text for e in scene.pj.report_lines]
+    check(
+        not any(t.startswith("Brightness assumptions:") for t in dark_lines),
+        "no-hit report omits empty brightness assumptions",
+    )
+    check(
+        any(t.startswith("Horizontal coverage: 0.0%") for t in dark_lines),
+        "no-hit report states zero horizontal coverage",
+    )
+    check(
+        all(
+            o.pj_projector.calc_mean_nits == 0.0
+            and o.pj_projector.calc_image_width == 0.0
+            and o.pj_projector.calc_image_height == 0.0
+            for o in projectors
+        ),
+        "no-hit reanalysis clears stale projector results",
+    )
+    for o, matrix in zip(projectors, original_matrices, strict=True):
+        o.matrix_world = matrix
 
     # -- 5. teardown is clean ----------------------------------------------
     print("\n[5] clear analysis and unregister")

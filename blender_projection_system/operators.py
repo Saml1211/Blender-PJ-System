@@ -536,9 +536,10 @@ class PJ_OT_analyze(Operator):
                 f"image {props.calc_image_width:.2f} x {props.calc_image_height:.2f} m; "
                 f"shift V={props.lens_shift_v * 100:+.1f}% H={props.lens_shift_h * 100:+.1f}%"
             )
-        lines.append("Brightness assumptions: " + "; ".join(
-            report.brightness.assumptions if report.brightness else []
-        ))
+        if report.brightness is not None:
+            lines.append(
+                "Brightness assumptions: " + "; ".join(report.brightness.assumptions)
+            )
         _set_report(scene, lines, warnings)
 
         if self.visualize:

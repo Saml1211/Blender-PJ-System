@@ -16,8 +16,10 @@ invites someone to skip a real thermal check.
 
 ## Decision
 
-The following claims are removed from all user-facing documentation, and no
-code pretends to implement them.
+The following claims are removed from the README and the maintained
+user-facing documentation linked from `docs/index.md`, and no code pretends to
+implement them. Historical PRDs remain in the repository for provenance only;
+each opens with a prominent warning that it is not a specification.
 
 | Claim | Status | Why removed |
 |---|---|---|

@@ -10,14 +10,14 @@ cannot tell you about the result.
 For `N` projectors covering an arc of length `S` with overlap fraction `f`,
 each image must cover arc width `w`:
 
-```
+```text
 S = N·w − (N−1)·f·w        →        w = S / (N − (N−1)·f)
 ```
 
 Image centres are then spaced `w·(1−f)` apart, starting half an image width in
 from the wall's start:
 
-```
+```text
 s_i = w/2 + i·w·(1−f)
 ```
 
@@ -28,7 +28,7 @@ last image's right edge at `s = S`, and each neighbouring pair shares exactly
 **Worked example** — the wall from the README, `S = 12.57 m`, `N = 3`,
 `f = 0.15`:
 
-```
+```text
 w   = 12.57 / (3 − 2×0.15) = 12.57 / 2.70 = 4.654 m
 s   = 2.327, 6.283, 10.239 m
 spans = 0.00–4.65, 3.96–8.61, 7.91–12.57 m
@@ -44,7 +44,7 @@ on a cylinder does not have a closed-form arc width. The planner therefore
 **solves numerically**: it places a trial projector, ray-casts its frustum onto
 the wall, measures the actual arc span, and iterates
 
-```
+```text
 D ← D · (1 + 0.85·(target/measured − 1))
 ```
 
@@ -74,7 +74,7 @@ number that ignores the request.
 | Optical axis | Horizontal | Aimed at the target point |
 | Keystone | None | Yes — needs electronic correction, which costs pixels |
 | Focus uniformity | Better | Worse (wider throw spread) |
-| Limit | Required shift may exceed the lens | None geometrically |
+| Limit | Required shift may exceed the lens | Avoids lens shift, but the requested width can still be geometrically infeasible |
 | Required shift | `−drop / image_height` | n/a (zero) |
 
 Level is the preferred install and the default. The add-on computes the shift
@@ -103,11 +103,11 @@ because the outline walk closes across the missing samples.)
 
 ### Why coverage and horizontal coverage differ
 
-A 16:9 image on a 3 m wall is about 2.7 m tall. Horizontal coverage can be
-100% while area coverage is ~89%, because strips at the top and bottom are
-never lit. That is a normal consequence of a fixed aspect ratio, **not a
-gap**, and the report keeps the two separate so a sound design is not flagged
-as failing.
+A 4.8 m-wide 16:9 image is about 2.7 m tall (`height = width × 9/16`). On a
+3 m wall, horizontal coverage can be 100% while area coverage is ~89%, because
+strips at the top and bottom are never lit. That is a normal consequence of a
+fixed aspect ratio, **not a gap**, and the report keeps the two separate so a
+sound design is not flagged as failing.
 
 If you need the full height, the options are a taller image (wider arc per
 projector, fewer projectors, or a shorter lens), a second stacked row, or

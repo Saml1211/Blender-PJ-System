@@ -1,0 +1,42 @@
+{"path":"blender_projection_system/__init__.py","area":"diff","preview":"function register\nfunction unregister"}
+{"path":"blender_projection_system/operators.py","area":"diff","preview":"function _set_report(scene, lines, warnings)\nfunction _resolve_wall(context)\nfunction _wall_for_operation(obj)\nfunction _manual_pose_and_spec(position, target, spec, mode)\nfunction _scene_spec(scene)\nfunction _projectors_in_scene(context)\nclass PJ_OT_create_curved_wall(Operator)\nmethod PJ_OT_create_curved_wall.invoke\nmethod PJ_OT_create_curved_wall.execute\nclass PJ_OT_set_target_wall(Operator)\n@classmethod method PJ_OT_set_target_wall.poll\nmethod PJ_OT_set_target_wall.execute\n...\nclass PJ_OT_add_projector(Operator)\nclass PJ_OT_aim_at_wall(Operator)\nmethod PJ_OT_aim_at_wall.execute\n@classmethod method PJ_OT_plan_array.poll\nclass PJ_OT_analyze(Operator)\nmethod PJ_OT_analyze.execute\nclass PJ_OT_clear_analysis(Operator)\nclass PJ_OT_copy_report(Operator)\nmethod PJ_OT_copy_report.execute\nfunction unregister()"}
+{"path":"blender_projection_system/properties.py","area":"diff","preview":"@contextlib.contextmanager function _no_reentry()\nfunction _update_calc_distance(self, context)\nfunction _update_calc_width(self, context)\nfunction _update_calc_throw_ratio(self, context)\nfunction _is_wall_object(self, obj)\nclass PJ_PG_ReportLine(PropertyGroup)\nclass PJ_PG_Wall(PropertyGroup)\nclass PJ_PG_Projector(PropertyGroup)\nclass PJ_PG_Scene(PropertyGroup)\nfunction register()\nfunction unregister()"}
+{"path":"blender_projection_system/ui.py","area":"diff","preview":"function _projector_objects(context)\nclass _Base(Panel)\nclass PJ_PT_target(_Base)\nmethod PJ_PT_target.draw\nclass PJ_PT_projectors(_Base)\nmethod PJ_PT_projectors.draw\nclass PJ_PT_selected_projector(_Base)\n@classmethod method PJ_PT_selected_projector.poll\nmethod PJ_PT_selected_projector.draw\nclass PJ_PT_analysis(_Base)\nmethod PJ_PT_analysis.draw\nclass PJ_PT_report(_Base)\nmethod PJ_PT_report.draw\nclass PJ_PT_calculator(_Base)\nmethod PJ_PT_calculator.draw\nfunction register()\nfunction unregister()"}
+{"path":"blender_projection_system/visualization.py","area":"diff","preview":"function get_collection(context, name)\nfunction link_only_to(obj, coll)\nfunction clear_collection(name)\nfunction get_overlay_material(index)\nfunction wall_from_object(obj)\nfunction sync_generated_wall_mesh(obj)\nfunction build_wall_mesh(wall, segments)\nfunction pose_matrix(position, basis_columns)\nfunction configure_camera(obj, spec, throw_distance)\nfunction apply_spec_to_object(obj, spec, mode)\nfunction spec_from_object(obj)\nfunction store_placement_results(obj, placement)\nfunction store_footprint_results(obj, footprint, gain)\nfunction _offset_from_wall(point, wall, s)\nfunction build_footprint_object(context, footprint, wall, index)\nfunction build_frustum_object(context, footprint, index)\nfunction _band_geometry(wall, spans, offset_scale, max_segment)\nfunction build_gap_object(context, wall, gaps)\nfunction build_blend_object(context, wall, blend_zones)"}
+{"path":"cleanup_addon.py","area":"diff","preview":""}
+{"path":"web-projection-system/package.json","area":"diff","preview":""}
+{"path":"web-projection-system/public/index.html","area":"diff","preview":""}
+{"path":"web-projection-system/public/manifest.json","area":"diff","preview":""}
+{"path":"web-projection-system/run.sh","area":"diff","preview":""}
+{"path":"web-projection-system/src/App.css","area":"diff","preview":""}
+{"path":"web-projection-system/src/App.tsx","area":"diff","preview":""}
+{"path":"web-projection-system/src/components/ControlPanel.css","area":"diff","preview":""}
+{"path":"web-projection-system/src/components/ControlPanel.tsx","area":"diff","preview":""}
+{"path":"web-projection-system/src/components/ImportPanel.css","area":"diff","preview":""}
+{"path":"web-projection-system/src/components/ImportPanel.tsx","area":"diff","preview":""}
+{"path":"web-projection-system/src/components/MultiProjectorPanel.css","area":"diff","preview":""}
+{"path":"web-projection-system/src/components/MultiProjectorPanel.tsx","area":"diff","preview":""}
+{"path":"web-projection-system/src/components/ProjectManager.css","area":"diff","preview":""}
+{"path":"web-projection-system/src/components/ProjectManager.tsx","area":"diff","preview":""}
+{"path":"web-projection-system/src/components/ProjectionSystem.css","area":"diff","preview":""}
+{"path":"web-projection-system/src/components/ProjectionSystem.tsx","area":"diff","preview":""}
+{"path":"web-projection-system/src/components/ProjectorPanel.css","area":"diff","preview":""}
+{"path":"web-projection-system/src/components/ProjectorPanel.tsx","area":"diff","preview":""}
+{"path":"web-projection-system/src/components/SurfacePanel.css","area":"diff","preview":""}
+{"path":"web-projection-system/src/components/SurfacePanel.tsx","area":"diff","preview":""}
+{"path":"web-projection-system/src/components/ThemeToggle.css","area":"diff","preview":""}
+{"path":"web-projection-system/src/components/ThemeToggle.tsx","area":"diff","preview":""}
+{"path":"web-projection-system/src/context/ThemeContext.tsx","area":"diff","preview":""}
+{"path":"web-projection-system/src/index.css","area":"diff","preview":""}
+{"path":"web-projection-system/src/index.tsx","area":"diff","preview":""}
+{"path":"web-projection-system/src/models/Projector.ts","area":"diff","preview":""}
+{"path":"web-projection-system/src/models/ProjectorCollection.ts","area":"diff","preview":""}
+{"path":"web-projection-system/src/models/Surface.ts","area":"diff","preview":""}
+{"path":"web-projection-system/src/store/projectionStore.ts","area":"diff","preview":""}
+{"path":"web-projection-system/src/utils/measurementTool.ts","area":"diff","preview":""}
+{"path":"web-projection-system/src/utils/modelImporter.ts","area":"diff","preview":""}
+{"path":"web-projection-system/src/utils/projectManager.ts","area":"diff","preview":""}
+{"path":"web-projection-system/src/utils/projectionCalculations.ts","area":"diff","preview":""}
+{"path":"web-projection-system/src/utils/sceneManager.ts","area":"diff","preview":""}
+{"path":"web-projection-system/tsconfig.json","area":"diff","preview":""}
+{"path":"web-projection-system/verify-build.sh","area":"diff","preview":""}

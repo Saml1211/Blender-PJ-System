@@ -1,0 +1,4 @@
+interface:
+  display_name: "Blender UI Add-on Designer"
+  short_description: "Design Blender add-on UIs for Blender 4.x and 5.x."
+  default_prompt: "Design and generate Blender add-on UI code optimized for usability, consistency, and Blender 4.x/5.x compatibility."

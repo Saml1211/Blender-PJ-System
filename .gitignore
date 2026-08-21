@@ -92,3 +92,6 @@ temp/
 *_mcp*.log
 vba_compiler_mcp.log
 vmi_mcp_server.log
+
+# Local Blender extension install sandbox (build artefact)
+.workflow/install-sandbox/

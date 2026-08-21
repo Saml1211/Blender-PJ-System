@@ -1,0 +1,26 @@
+{
+  "title": "Curved Wall Planner Replacement PR",
+  "slug": "curved-wall-planner-replacement-pr",
+  "created_at": "2026-08-05T22:16:21+00:00",
+  "status": "in_progress",
+  "approval": {
+    "required": true,
+    "granted": true,
+    "notes": "User explicitly authorized zip recreation, commit, push, replacement PR, and conditional closure of PR #1. No force-push or merge."
+  },
+  "packets": [
+    {"id": "01-core-audit", "status": "pending"},
+    {"id": "02-blender-integration", "status": "pending"},
+    {"id": "03-deletions-docs-security", "status": "pending"},
+    {"id": "04-parent-integration", "status": "in_progress"},
+    {"id": "05-acceptance-publish", "status": "pending"}
+  ],
+  "verification": {
+    "status": "not_started",
+    "checks": [
+      "ruff", "compileall", "pytest", "register-cycles", "blender-smoke",
+      "extension-build-install", "blender-mcp-live", "viewport-review",
+      "security-review", "final-diff", "push", "replacement-pr", "close-pr1"
+    ]
+  }
+}

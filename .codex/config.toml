@@ -1,0 +1,23 @@
+# Blender is the only external runtime required in this workspace.
+[mcp_servers.blender]
+command = 'C:\Users\SamLyndon\.local\bin\uvx.exe'
+args = ["blender-mcp"]
+enabled = true
+required = true
+startup_timeout_sec = 30
+enabled_tools = [
+  "get_scene_info",
+  "get_object_info",
+  "get_viewport_screenshot",
+  "execute_blender_code",
+]
+default_tools_approval_mode = "prompt"
+
+[mcp_servers.blender.tools.get_scene_info]
+approval_mode = "approve"
+
+[mcp_servers.blender.tools.get_object_info]
+approval_mode = "approve"
+
+[mcp_servers.blender.tools.get_viewport_screenshot]
+approval_mode = "approve"

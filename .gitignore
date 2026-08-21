@@ -87,3 +87,8 @@ temp/
 # Cursor specific (keep .cursor/rules but ignore other .cursor contents)
 .cursor/*
 !.cursor/rules/
+
+# MCP server logs dropped into the repo root by external tooling
+*_mcp*.log
+vba_compiler_mcp.log
+vmi_mcp_server.log

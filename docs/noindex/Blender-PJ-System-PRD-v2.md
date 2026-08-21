@@ -1,3 +1,14 @@
+> **⚠️ HISTORICAL DOCUMENT — NOT A SPECIFICATION**
+>
+> This describes an aspirational product that was never built. It is kept for
+> provenance only. Several features it describes (phase synchronisation,
+> thermal modelling, ambient-light AI, VR/AR, CAD import) do not exist and are
+> not planned — see [ADR 0002](../adr/0002-removed-claims.md).
+>
+> **For what the software actually does, read the [README](../../README.md).**
+
+---
+
 Great. I’ll review and enhance the PRD while preserving its original structure (Sections 1 to 10). I’ll fact-check all relevant technical and scientific details, expand its practical application focus for industries like film, architecture, events, and corporate AV design, and integrate new features such as thermal airflow visualization.
 
 I’ll let you know as soon as the upgraded PRD is ready for your review.

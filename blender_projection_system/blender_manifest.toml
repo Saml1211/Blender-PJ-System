@@ -1,0 +1,18 @@
+schema_version = "1.0.0"
+
+id = "projection_planner"
+version = "0.2.0"
+name = "Projection Planner"
+tagline = "Plan projector arrays against curved and flat walls"
+maintainer = "Sam Lyndon"
+type = "add-on"
+
+website = "https://github.com/Saml1211/Blender-PJ-System"
+
+tags = ["3D View", "Object"]
+
+blender_version_min = "4.2.0"
+
+license = ["SPDX:MIT"]
+
+# The add-on is pure Python and requests no extension permissions.

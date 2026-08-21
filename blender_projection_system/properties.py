@@ -1,246 +1,401 @@
+"""Blender property definitions for the Projection Planner.
+
+Everything lives in ``PropertyGroup``s attached to a single pointer per ID
+type, so ``unregister`` has three attributes to delete rather than twenty
+loose ``bpy.types.Object.pj_*`` entries. That is what makes enable / disable /
+re-enable cycles reliable.
+
+Numbers that describe *hardware* (throw ratio, lumens, lens shift limits) are
+editable. Numbers that are a *consequence* of geometry (throw distance, image
+size, coverage) are written by the analysis operator and shown read-only - the
+v0.1 add-on let users type a throw distance that the scene then contradicted.
+"""
+
+from __future__ import annotations
+
+import contextlib
+
 import bpy
+from bpy.props import (
+    BoolProperty,
+    CollectionProperty,
+    EnumProperty,
+    FloatProperty,
+    IntProperty,
+    PointerProperty,
+    StringProperty,
+)
+from bpy.types import Object, PropertyGroup, Scene
 
-# Global variable to track update state
-_updating_projection_params = False
+from .core.array import MODE_LEVEL, MODE_TILT
 
-# Update functions for bidirectional parameter linking
-def update_throw_distance(self, context):
-    # Prevent recursive updates by checking if we're already updating
-    global _updating_projection_params
-    if _updating_projection_params:
-        return
+# ---------------------------------------------------------------------------
+# Update-callback re-entry guard
+# ---------------------------------------------------------------------------
 
-    _updating_projection_params = True
-    # When throw distance changes, update throw ratio (TR = D/W)
-    if self.pj_image_width > 0:
-        self.pj_throw_ratio = self.pj_throw_distance / self.pj_image_width
-    _updating_projection_params = False
+_guard_depth = 0
 
-def update_image_width(self, context):
-    # Prevent recursive updates
-    global _updating_projection_params
-    if _updating_projection_params:
-        return
 
-    _updating_projection_params = True
-    # When image width changes, update throw ratio (TR = D/W)
-    if self.pj_image_width > 0:
-        self.pj_throw_ratio = self.pj_throw_distance / self.pj_image_width
-    _updating_projection_params = False
+@contextlib.contextmanager
+def _no_reentry():
+    """Suppress nested property-update callbacks.
 
-def update_throw_ratio(self, context):
-    # Prevent recursive updates
-    global _updating_projection_params
-    if _updating_projection_params:
-        return
+    A context manager rather than a bare module flag: v0.1 set a global to
+    ``True``, and any exception in between left it stuck, silently disabling
+    every later update for the rest of the session.
+    """
+    global _guard_depth
+    _guard_depth += 1
+    try:
+        yield _guard_depth == 1
+    finally:
+        _guard_depth -= 1
 
-    _updating_projection_params = True
-    # When throw ratio changes, update image width (W = D/TR)
-    if self.pj_throw_ratio > 0:
-        self.pj_image_width = self.pj_throw_distance / self.pj_throw_ratio
-    _updating_projection_params = False
 
-# Collection functionality
-def update_active_collection(self, context):
-    # Callback for when active collection changes
-    pass
+MOUNT_MODE_ITEMS = [
+    (
+        MODE_LEVEL,
+        "Level + Lens Shift",
+        "Keep the optical axis horizontal and shift the lens down onto the wall. "
+        "No keystone, even focus - needs enough lens shift range",
+        0,
+    ),
+    (
+        MODE_TILT,
+        "Tilt to Target",
+        "Tilt the projector to aim at the wall without lens shift. Feasible layouts "
+        "introduce keystone that must be corrected electronically",
+        1,
+    ),
+]
 
-def get_collection_items(self, context):
-    # Get list of collections for dropdown menu
-    items = []
 
-    if hasattr(context.scene, 'pj_projector_collections'):
-        for i, coll in enumerate(context.scene.pj_projector_collections):
-            items.append((coll.name, coll.name, f"Projector Collection: {coll.name}", i))
+# ---------------------------------------------------------------------------
+# Lens scratchpad (the only genuinely bidirectional pair)
+# ---------------------------------------------------------------------------
 
-    # Always add option for no collection
-    if not items:
-        items.append(("", "No Collections", "No projector collections available", 0))
 
-    return items
+def _update_calc_distance(self, context):
+    with _no_reentry() as outermost:
+        if not outermost:
+            return
+        if self.calc_throw_ratio > 0.0:
+            self.calc_width = self.calc_distance / self.calc_throw_ratio
 
-# Property group for projector collections
-class PJ_PG_ProjectorCollectionV2(bpy.types.PropertyGroup):
-    name: bpy.props.StringProperty(
-        name="Collection Name",
-        description="Name of the projector collection",
-        default=""
+
+def _update_calc_width(self, context):
+    with _no_reentry() as outermost:
+        if not outermost:
+            return
+        if self.calc_width > 0.0:
+            self.calc_throw_ratio = self.calc_distance / self.calc_width
+
+
+def _update_calc_throw_ratio(self, context):
+    with _no_reentry() as outermost:
+        if not outermost:
+            return
+        if self.calc_throw_ratio > 0.0:
+            self.calc_width = self.calc_distance / self.calc_throw_ratio
+
+
+def _is_wall_object(self, obj):
+    return bool(getattr(obj, "pj_wall", None) and obj.pj_wall.is_wall)
+
+
+# ---------------------------------------------------------------------------
+# Property groups
+# ---------------------------------------------------------------------------
+
+
+class PJ_PG_ReportLine(PropertyGroup):
+    """One line of the last analysis report."""
+
+    text: StringProperty(name="Text", default="")
+    kind: EnumProperty(
+        name="Kind",
+        items=[
+            ("INFO", "Info", "Informational line"),
+            ("WARNING", "Warning", "Something needs attention"),
+        ],
+        default="INFO",
     )
+
+
+class PJ_PG_Wall(PropertyGroup):
+    """Parameters of a cylindrical projection wall, stored on its object.
+
+    ``base_center`` is the object's own location, so moving the empty/mesh in
+    the viewport moves the analysis with it. Rotation is intentionally not
+    honoured; the operator bakes the arc into the mesh at identity rotation.
+    """
+
+    is_wall: BoolProperty(
+        name="Is Projection Wall",
+        description="Marks this object as a projection target surface",
+        default=False,
+    )
+    radius: FloatProperty(
+        name="Radius",
+        description="Radius of the wall's curvature",
+        default=8.0,
+        min=0.01,
+        soft_max=100.0,
+        unit="LENGTH",
+    )
+    height: FloatProperty(
+        name="Height",
+        description="Height of the wall surface",
+        default=3.0,
+        min=0.01,
+        soft_max=30.0,
+        unit="LENGTH",
+    )
+    arc_start_deg: FloatProperty(
+        name="Arc Start",
+        description="Start of the wall arc, measured from +X counter-clockwise",
+        default=-45.0,
+        min=-360.0,
+        max=360.0,
+    )
+    arc_end_deg: FloatProperty(
+        name="Arc End",
+        description="End of the wall arc, measured from +X counter-clockwise",
+        default=45.0,
+        min=-360.0,
+        max=360.0,
+    )
+    segments: IntProperty(
+        name="Segments",
+        description="Mesh subdivisions around the arc",
+        default=48,
+        min=2,
+        max=512,
+    )
+    concave: BoolProperty(
+        name="Concave",
+        description="Projectors sit inside the arc (the usual curved-wall case)",
+        default=True,
+    )
+
+
+class PJ_PG_Projector(PropertyGroup):
+    """Lens and mount data for one projector, plus read-only computed results."""
+
+    is_projector: BoolProperty(
+        name="Is Projector",
+        description="Marks this object as a projector",
+        default=False,
+    )
+
+    # -- hardware, editable ------------------------------------------------
+    throw_ratio: FloatProperty(
+        name="Throw Ratio",
+        description="Throw distance divided by image width (D/W) for the fitted lens",
+        default=1.2,
+        min=0.1,
+        soft_max=10.0,
+        precision=3,
+    )
+    throw_ratio_min: FloatProperty(
+        name="Lens Min TR",
+        description="Shortest throw ratio the fitted lens supports (0 to skip the check)",
+        default=0.0,
+        min=0.0,
+        precision=3,
+    )
+    throw_ratio_max: FloatProperty(
+        name="Lens Max TR",
+        description="Longest throw ratio the fitted lens supports (0 to skip the check)",
+        default=0.0,
+        min=0.0,
+        precision=3,
+    )
+    aspect_w: IntProperty(name="Aspect W", default=16, min=1, max=256)
+    aspect_h: IntProperty(name="Aspect H", default=9, min=1, max=256)
+    lumens: FloatProperty(
+        name="Lumens",
+        description="Rated light output. Derate it yourself for eco mode or lamp age",
+        default=7000.0,
+        min=0.0,
+        soft_max=50000.0,
+    )
+    lens_shift_v: FloatProperty(
+        name="Vertical Lens Shift",
+        description=(
+            "Image centre offset from the optical axis, as a fraction of image "
+            "height. 0.5 puts the axis on the image edge; datasheets calling that "
+            "'100%' use twice these numbers"
+        ),
+        default=0.0,
+        min=-2.0,
+        max=2.0,
+        precision=3,
+    )
+    lens_shift_h: FloatProperty(
+        name="Horizontal Lens Shift",
+        description="Image centre offset from the axis, as a fraction of image width",
+        default=0.0,
+        min=-2.0,
+        max=2.0,
+        precision=3,
+    )
+    max_lens_shift_v: FloatProperty(
+        name="Max Vertical Shift",
+        description="Vertical shift limit of the fitted lens, same units as above",
+        default=0.5,
+        min=0.0,
+        max=2.0,
+        precision=3,
+    )
+    max_lens_shift_h: FloatProperty(
+        name="Max Horizontal Shift",
+        default=0.15,
+        min=0.0,
+        max=2.0,
+        precision=3,
+    )
+    mount_mode: EnumProperty(
+        name="Mount Mode",
+        items=MOUNT_MODE_ITEMS,
+        default=MODE_LEVEL,
+    )
+
+    # -- computed, written by the analysis operator ------------------------
+    calc_throw_distance: FloatProperty(name="Throw Distance", default=0.0, unit="LENGTH")
+    calc_image_width: FloatProperty(name="Image Width", default=0.0, unit="LENGTH")
+    calc_image_height: FloatProperty(name="Image Height", default=0.0, unit="LENGTH")
+    calc_arc_span: FloatProperty(name="Arc Covered", default=0.0, unit="LENGTH")
+    calc_hit_ratio: FloatProperty(name="On Surface", default=0.0, min=0.0, max=1.0)
+    calc_max_incidence_deg: FloatProperty(name="Worst Incidence", default=0.0)
+    calc_mean_nits: FloatProperty(name="Mean Luminance", default=0.0)
+    has_result: BoolProperty(name="Has Result", default=False)
+
+
+class PJ_PG_Scene(PropertyGroup):
+    """Scene-level planning inputs and the last report."""
+
+    target_wall: PointerProperty(
+        name="Target Wall",
+        description="The curved wall the array is planned against",
+        type=Object,
+        poll=_is_wall_object,
+    )
+
+    projector_count: IntProperty(
+        name="Projectors",
+        description="How many projectors to spread across the wall",
+        default=3,
+        min=1,
+        max=24,
+    )
+    overlap: FloatProperty(
+        name="Overlap",
+        description="Fraction of each image shared with its neighbour for edge blending",
+        default=0.15,
+        min=0.0,
+        max=0.6,
+        precision=3,
+        subtype="FACTOR",
+    )
+    mount_height: FloatProperty(
+        name="Mount Height",
+        description="Height of the projector mounting point above the world origin",
+        default=3.2,
+        min=0.0,
+        soft_max=30.0,
+        unit="LENGTH",
+    )
+    image_center_height: FloatProperty(
+        name="Image Centre Above Wall Base",
+        description="Local height above the wall's bottom edge for the image centres",
+        default=1.5,
+        min=0.0,
+        soft_max=30.0,
+        unit="LENGTH",
+    )
+    mount_mode: EnumProperty(name="Mount Mode", items=MOUNT_MODE_ITEMS, default=MODE_LEVEL)
+
+    # -- the spec used when generating an array ----------------------------
+    throw_ratio: FloatProperty(name="Throw Ratio", default=1.2, min=0.1, soft_max=10.0, precision=3)
+    aspect_w: IntProperty(name="Aspect W", default=16, min=1, max=256)
+    aspect_h: IntProperty(name="Aspect H", default=9, min=1, max=256)
+    lumens: FloatProperty(name="Lumens", default=7000.0, min=0.0, soft_max=50000.0)
+    max_lens_shift_v: FloatProperty(name="Max Vertical Shift", default=0.5, min=0.0, max=2.0)
+
+    # -- analysis settings --------------------------------------------------
+    samples: IntProperty(
+        name="Footprint Samples",
+        description="Rays cast per axis across each image. Higher is slower and more exact",
+        default=9,
+        min=3,
+        max=41,
+    )
+    grid_s: IntProperty(name="Coverage Grid (arc)", default=120, min=8, max=600)
+    grid_z: IntProperty(name="Coverage Grid (height)", default=24, min=4, max=200)
+    screen_gain: FloatProperty(
+        name="Screen Gain",
+        description="Gain of the wall finish. 1.0 is a matte white Lambertian surface",
+        default=1.0,
+        min=0.05,
+        max=5.0,
+        precision=2,
+    )
+    draw_frustums: BoolProperty(
+        name="Draw Frustums",
+        description="Include lens-to-corner edges in the analysis visualisation",
+        default=True,
+    )
+
+    # -- lens scratchpad ----------------------------------------------------
+    calc_distance: FloatProperty(
+        name="Distance",
+        default=6.0,
+        min=0.01,
+        unit="LENGTH",
+        precision=3,
+        update=_update_calc_distance,
+    )
+    calc_width: FloatProperty(
+        name="Image Width",
+        default=5.0,
+        min=0.01,
+        unit="LENGTH",
+        precision=3,
+        update=_update_calc_width,
+    )
+    calc_throw_ratio: FloatProperty(
+        name="Throw Ratio",
+        default=1.2,
+        min=0.01,
+        precision=3,
+        update=_update_calc_throw_ratio,
+    )
+
+    # -- last report --------------------------------------------------------
+    report_lines: CollectionProperty(type=PJ_PG_ReportLine)
+    has_report: BoolProperty(default=False)
+
+
+_CLASSES = (
+    PJ_PG_ReportLine,
+    PJ_PG_Wall,
+    PJ_PG_Projector,
+    PJ_PG_Scene,
+)
+
 
 def register():
-    # Register the property group first
-    try:
-        bpy.utils.register_class(PJ_PG_ProjectorCollectionV2)
-    except ValueError as e:
-        # Class is already registered, which can happen if the addon wasn't properly unregistered
-        if "already registered" in str(e):
-            print("PJ_PG_ProjectorCollectionV2 already registered, skipping registration")
-        else:
-            raise e
+    for cls in _CLASSES:
+        bpy.utils.register_class(cls)
+    Object.pj_wall = PointerProperty(type=PJ_PG_Wall)
+    Object.pj_projector = PointerProperty(type=PJ_PG_Projector)
+    Scene.pj = PointerProperty(type=PJ_PG_Scene)
 
-    # Scene property for unit system
-    bpy.types.Scene.pj_unit_system = bpy.props.EnumProperty(
-        name="Unit System",
-        description="Unit system for display",
-        items=[
-            ('METRIC', "Metric", "Use Metric units (meters)"),
-            ('IMPERIAL', "Imperial", "Use Imperial units (feet/inches)")
-        ],
-        default='METRIC'
-    )
-
-    # Custom properties for projector objects
-    bpy.types.Object.pj_is_projector = bpy.props.BoolProperty(
-        name="Is Projector",
-        description="Identifies this object as a projector",
-        default=False
-    )
-
-    bpy.types.Object.pj_throw_distance = bpy.props.FloatProperty(
-        name="Throw Distance",
-        description="Distance from projector to projection surface (in meters)",
-        min=0.1,
-        default=4.0,
-        precision=3,
-        unit='LENGTH',
-        update=update_throw_distance
-    )
-
-    bpy.types.Object.pj_image_width = bpy.props.FloatProperty(
-        name="Image Width",
-        description="Width of the projected image (in meters)",
-        min=0.1,
-        default=2.0,
-        precision=3,
-        unit='LENGTH',
-        update=update_image_width
-    )
-
-    bpy.types.Object.pj_throw_ratio = bpy.props.FloatProperty(
-        name="Throw Ratio",
-        description="Ratio of throw distance to image width",
-        min=0.1,
-        default=2.0,
-        precision=3,
-        update=update_throw_ratio
-    )
-
-    bpy.types.Object.pj_aspect_ratio_w = bpy.props.IntProperty(
-        name="Aspect Width",
-        description="Width component of aspect ratio (e.g., 16 for 16:9)",
-        min=1,
-        default=16
-    )
-
-    bpy.types.Object.pj_aspect_ratio_h = bpy.props.IntProperty(
-        name="Aspect Height",
-        description="Height component of aspect ratio (e.g., 9 for 16:9)",
-        min=1,
-        default=9
-    )
-
-    bpy.types.Object.pj_show_cone = bpy.props.BoolProperty(
-        name="Show Projection Cone",
-        description="Toggle visibility of the projection cone",
-        default=True
-    )
-
-    # Environment object property
-    bpy.types.Object.pj_is_environment = bpy.props.BoolProperty(
-        name="Is Environment",
-        description="Identifies this object as part of the projection environment",
-        default=False
-    )
-
-    # Multi-projector support properties
-
-    # Projector collection property
-    bpy.types.Object.pj_collection = bpy.props.StringProperty(
-        name="Projector Collection",
-        description="Collection this projector belongs to",
-        default=""
-    )
-
-    # Overlapping projection property
-    bpy.types.Object.pj_overlaps_with = bpy.props.StringProperty(
-        name="Overlaps With",
-        description="Name of projector this one overlaps with",
-        default=""
-    )
-
-    # Edge blend amount
-    bpy.types.Object.pj_edge_blend_amount = bpy.props.FloatProperty(
-        name="Edge Blend Amount",
-        description="Amount of edge blending for overlapping projections",
-        min=0.0,
-        max=1.0,
-        default=0.2
-    )
-
-    # Multi-projector activation toggle
-    bpy.types.Object.pj_is_active_projector = bpy.props.BoolProperty(
-        name="Active Projector",
-        description="Whether this projector is active in the group",
-        default=True
-    )
-
-    # Scene properties for collection management
-
-    # List to store projector collections
-    bpy.types.Scene.pj_projector_collections = bpy.props.CollectionProperty(
-        type=PJ_PG_ProjectorCollectionV2,
-        name="Projector Collections",
-        description="Collections of projectors for grouped management"
-    )
-
-    # Active collection index
-    bpy.types.Scene.pj_active_collection_index = bpy.props.IntProperty(
-        name="Active Collection Index",
-        description="Index of the active projector collection",
-        default=0,
-        update=update_active_collection
-    )
-
-    # Collection selector for UI
-    bpy.types.Scene.pj_collection_selector = bpy.props.EnumProperty(
-        name="Projector Collection",
-        description="Select projector collection to work with",
-        items=get_collection_items
-    )
 
 def unregister():
-    del bpy.types.Scene.pj_unit_system
-
-    # Remove custom properties
-    del bpy.types.Object.pj_is_projector
-    del bpy.types.Object.pj_throw_distance
-    del bpy.types.Object.pj_image_width
-    del bpy.types.Object.pj_throw_ratio
-    del bpy.types.Object.pj_aspect_ratio_w
-    del bpy.types.Object.pj_aspect_ratio_h
-    del bpy.types.Object.pj_show_cone
-    del bpy.types.Object.pj_is_environment
-
-    # Remove multi-projector properties
-    del bpy.types.Object.pj_collection
-    del bpy.types.Object.pj_overlaps_with
-    del bpy.types.Object.pj_edge_blend_amount
-    del bpy.types.Object.pj_is_active_projector
-
-    # Remove scene collection properties
-    del bpy.types.Scene.pj_projector_collections
-    del bpy.types.Scene.pj_active_collection_index
-    del bpy.types.Scene.pj_collection_selector
-
-    # Unregister the property group last
-    try:
-        bpy.utils.unregister_class(PJ_PG_ProjectorCollectionV2)
-    except ValueError as e:
-        # Class might not be registered, which can happen if it wasn't registered properly
-        if "not registered" in str(e):
-            print("PJ_PG_ProjectorCollectionV2 not registered, skipping unregistration")
-        else:
-            raise e
-
-if __name__ == "__main__":
-    register()
+    for attr, owner in (("pj_wall", Object), ("pj_projector", Object), ("pj", Scene)):
+        if hasattr(owner, attr):
+            delattr(owner, attr)
+    for cls in reversed(_CLASSES):
+        bpy.utils.unregister_class(cls)

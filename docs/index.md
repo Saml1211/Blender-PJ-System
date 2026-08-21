@@ -1,40 +1,43 @@
-# Blender Projection System Documentation
+# Projection Planner documentation
 
-Welcome to the documentation for the Blender Projection System, a comprehensive add-on for planning and visualizing projector setups in Blender.
+Blender 4.2 add-on for planning ceiling-mounted projector arrays against curved
+and flat walls.
 
-## Overview
+**Start with the [README](../README.md).** It carries the authoritative status
+table, the install steps, and the curved-wall quick start.
 
-The Blender Projection System is designed to provide AV System Design Engineers with accurate tools for:
-- Calculating projector placement and setup parameters
-- Visualizing projection cones and coverage areas
-- Managing multi-projector configurations with edge blending
-- Simulating environmental factors like ambient light and thermal behavior
-- Creating immersive previews with VR/AR integration
+## Current documents
 
-## Getting Started
+| Document | What it is |
+|---|---|
+| [README](../README.md) | Status, install, quick start, verification |
+| [ADR 0001](adr/0001-canonical-architecture.md) | Why the Blender add-on is the only product, and how to recover the retired web app |
+| [ADR 0002](adr/0002-removed-claims.md) | Which advertised features were removed as unimplemented, and why |
+| [Feature reference](features/index.md) | What each capability computes, and its limits |
+| [Multi-projector arrays](features/multi-projector.md) | Array layout, overlap and blend-zone reporting |
+| [User manual](manual/index.md) | Panel-by-panel walkthrough |
 
-- [Installation](installation.md)
-- [Quick Start Guide](quickstart.md)
-- [Basic Concepts](concepts.md)
+## Historical documents — not a specification
 
-## Features
+The following describe an aspirational product that was never built. They are
+kept for provenance only. **Do not treat them as a description of the
+software.** Where they conflict with the README, the README is correct.
 
-- [Core Calculations](features/calculations.md)
-- [Visualization](features/visualization.md)
-- [Multi-Projector Management](features/multi-projector.md)
-- [Environmental Simulation](features/environment.md)
-- [Import/Export](features/import-export.md)
-- [VR/AR Integration](features/xr.md)
+- `PRD-BlenderProjectionMVP-20250329.md`
+- `Blender-PJ-System-PRD.md`
+- `noindex/Blender-PJ-System-PRD.md`
+- `noindex/Blender-PJ-System-PRD-v2.md`
+- `noindex/Blender-PJ-System-PRD-Final.md`
+- `../memory-bank/` — context notes from a previous agent-assisted session
 
-## Developer Documentation
+Specifically, these documents describe phase synchronisation, thermal CFD,
+ambient-light AI, VR/AR integration and CAD import. None of that exists; see
+[ADR 0002](adr/0002-removed-claims.md).
 
-- [Architecture](dev/architecture.md)
-- [API Reference](dev/api.md)
-- [Contributing](../CONTRIBUTING.md)
-- [Plugin Development](dev/plugins.md)
+## A note on numbers
 
-## Support
-
-- [FAQ](support/faq.md)
-- [Troubleshooting](support/troubleshooting.md)
-- [GitHub Issues](https://github.com/yourusername/Blender-PJ-System/issues) 
+Throw formulae and ray/cylinder intersections are analytic. Footprints,
+coverage, gaps, and blends are sampled at user-controlled resolution.
+**Photometry is a first-order estimate.** Every brightness report prints its
+assumptions: zero ambient light, full rated lumens, uniform intensity, and a
+Lambertian screen. Real rooms are dimmer.

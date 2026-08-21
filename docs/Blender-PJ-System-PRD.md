@@ -1,3 +1,14 @@
+> **⚠️ HISTORICAL DOCUMENT — NOT A SPECIFICATION**
+>
+> This describes an aspirational product that was never built. It is kept for
+> provenance only. Several features it describes (phase synchronisation,
+> thermal modelling, ambient-light AI, VR/AR, CAD import) do not exist and are
+> not planned — see [ADR 0002](adr/0002-removed-claims.md).
+>
+> **For what the software actually does, read the [README](../README.md).**
+
+---
+
 # Blender Projection Calculator Add-on PRD (Enhanced)
 
 *(Note: This document is an enhanced version of the original PRD, incorporating refinements based on further technical feasibility analysis.)*

@@ -18,7 +18,14 @@ from dataclasses import dataclass, field
 
 from .errors import ProjectionError
 from .footprint import Footprint
-from .photometry import BrightnessReport, illuminance_at, summarize_brightness
+from .photometry import (
+    BlendModel,
+    BrightnessReport,
+    assumptions_for_blend_model,
+    illuminance_at,
+    linear_ramp_weight,
+    summarize_brightness,
+)
 from .surfaces import CylindricalWall
 from .vectors import Vec3, dot, normalize, sub
 
@@ -95,6 +102,8 @@ class CoverageReport:
     blend_zones: list[BlendZone] = field(default_factory=list)
     projector_spans: list[tuple[str, Interval]] = field(default_factory=list)
     brightness: BrightnessReport | None = None
+    blend_model: BlendModel = BlendModel.RAW
+    """How overlapping illuminance was combined - see :class:`BlendModel`."""
     warnings: list[str] = field(default_factory=list)
 
     @property
@@ -153,8 +162,17 @@ def analyze_coverage(
     grid_s: int = DEFAULT_GRID_S,
     grid_z: int = DEFAULT_GRID_Z,
     screen_gain: float = 1.0,
+    blend_model: BlendModel = BlendModel.RAW,
 ) -> CoverageReport:
-    """Rasterised coverage, gap, overlap and brightness analysis for a wall."""
+    """Rasterised coverage, gap, overlap and brightness analysis for a wall.
+
+    ``blend_model`` selects how overlapping projectors' light is combined:
+    raw addition (:attr:`BlendModel.RAW`, the default) or the complementary
+    linear ramps an edge-blending processor applies
+    (:attr:`BlendModel.LINEAR_RAMP`). The ramp applies only where exactly two
+    images overlap; triple overlaps stay additive because they are flagged as
+    placement errors rather than blends.
+    """
     if grid_s < 1 or grid_z < 1:
         raise ProjectionError("coverage grid dimensions must be at least 1")
     ds = wall.arc_length / grid_s
@@ -184,17 +202,17 @@ def analyze_coverage(
     for i_s, iz, s, z in _cell_centers(wall, grid_s, grid_z):
         point = wall.point_at(s, z)
         normal = wall.normal_at_s(s)
-        count = 0
-        lux = 0.0
+        contributions: list[tuple[Footprint, float]] = []
         for fp in usable:
             # Back-project the cell through each lens rather than testing the
             # sampled outline: a footprint clipped by the wall edge has a
             # boundary polygon that closes across the missing samples.
             if not fp.covers(point):
                 continue
-            count += 1
-            lux += _cell_illuminance(fp, point, normal)
+            contributions.append((fp, _cell_illuminance(fp, point, normal)))
+        count = len(contributions)
         if count:
+            lux = _combined_illuminance(contributions, s, wall, blend_model)
             report.covered_cells += 1
             lux_grid.append(lux)
             covered_z.append(z)
@@ -216,7 +234,10 @@ def analyze_coverage(
     )
 
     if lux_grid:
-        report.brightness = summarize_brightness(lux_grid, screen_gain)
+        report.brightness = summarize_brightness(
+            lux_grid, screen_gain, assumptions_for_blend_model(blend_model)
+        )
+    report.blend_model = blend_model
 
     report.warnings.extend(_coverage_warnings(report))
     return report
@@ -230,6 +251,60 @@ def _cell_illuminance(fp: Footprint, point: Vec3, normal: Vec3) -> float:
         return 0.0
     incidence = math.acos(max(-1.0, min(1.0, dot(normalize(to_lens), normal))))
     return illuminance_at(fp.spec, d, incidence)
+
+
+def _combined_illuminance(
+    contributions: list[tuple[Footprint, float]],
+    s: float,
+    wall: CylindricalWall,
+    blend_model: BlendModel,
+) -> float:
+    """Combine per-projector illuminance for one wall cell.
+
+    Raw addition everywhere except: exactly two overlapping images under
+    :attr:`BlendModel.LINEAR_RAMP` get the complementary processor ramps.
+    Triple overlaps stay additive - they are flagged as placement errors,
+    not blends.
+    """
+    if blend_model is BlendModel.LINEAR_RAMP and len(contributions) == 2:
+        blended = _ramp_weighted_pair(contributions, s, wall.arc_length)
+        if blended is not None:
+            return blended
+    return sum(lux for _, lux in contributions)
+
+
+def _ramp_weighted_pair(
+    contributions: list[tuple[Footprint, float]],
+    s: float,
+    circumference: float,
+) -> float | None:
+    """Ramp-weighted illuminance for an exactly-two-image cell.
+
+    Returns ``None`` when the pair's arc spans do not actually intersect
+    (e.g. vertically disjoint images), in which case the caller falls back
+    to raw addition.
+    """
+    (a, lux_a), (b, lux_b) = contributions
+    ia = Interval(a.s_min, a.s_max)
+    ib = Interval(b.s_min, b.s_max)
+    if circumference > 0.0:
+        # Same seam handling as compute_blend_zones: pull b into a's frame.
+        center_a = 0.5 * (ia.start + ia.end)
+        center_b = 0.5 * (ib.start + ib.end)
+        shift = round((center_b - center_a) / circumference) * circumference
+        ib = Interval(ib.start + shift, ib.end + shift)
+    common = ia.intersect(ib)
+    if common is None or common.length <= 0.0:
+        return None
+    s_eval = (
+        s + round((0.5 * (common.start + common.end) - s) / circumference) * circumference
+        if circumference > 0.0
+        else s
+    )
+    w_l = linear_ramp_weight(s_eval, common.start, common.end, side="left")
+    w_r = linear_ramp_weight(s_eval, common.start, common.end, side="right")
+    a_on_left = 0.5 * (ia.start + ia.end) <= 0.5 * (ib.start + ib.end)
+    return (w_l * lux_a + w_r * lux_b) if a_on_left else (w_r * lux_a + w_l * lux_b)
 
 
 def _gap_intervals(
@@ -447,5 +522,10 @@ def format_report(report: CoverageReport) -> list[str]:
             f"Brightness: mean {b.mean_nits:.0f} nits "
             f"({b.mean_foot_lamberts:.1f} fL), range {b.min_nits:.0f}-{b.max_nits:.0f} nits, "
             f"uniformity {b.uniformity:.2f}"
+        )
+    if report.blend_model is BlendModel.LINEAR_RAMP:
+        lines.append(
+            "Overlap luminance uses a linear-ramp blend model; see brightness "
+            "assumptions"
         )
     return lines

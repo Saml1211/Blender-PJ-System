@@ -115,10 +115,20 @@ accepting the letterbox.
 
 ---
 
-## Blend zones — geometry only
+## Blend zones — geometry, plus an optional luminance model
 
-The add-on reports **where** images overlap and **how wide** the overlap is. It
-does **not** model the soft-edge luminance ramp a blending processor applies.
+The add-on always reports **where** images overlap and **how wide** the overlap
+is. What it does with the *light* in those overlaps is your choice, set in the
+Analysis panel under **Overlap**:
+
+- **Raw (additive)** — the default, and correct when no blending processor is
+  in the chain: overlapping illuminance simply adds.
+- **Linear blend ramp** — models what an edge-blending processor does: across
+  each pair's overlap one image ramps down while the other ramps up, so the
+  combined luminance stays flat through the zone instead of doubling.
+
+The ramp applies only where exactly two images overlap. Triple overlaps stay
+additive because they are flagged as placement errors rather than blends.
 
 Guidance it applies:
 
@@ -135,15 +145,20 @@ because it is usually a placement error rather than an intentional blend.
 
 ## Brightness in overlaps
 
-Illuminance from overlapping projectors **adds linearly**, which is correct for
-incoherent sources. So a blend zone is roughly twice as bright as the
-single-projector areas either side of it — before any blending processor pulls
-it back down.
+With the default **Raw (additive)** model, illuminance from overlapping
+projectors **adds linearly**, which is correct for incoherent sources. So a
+blend zone reads roughly twice as bright as the single-projector areas either
+side of it — before any blending processor pulls it back down.
 
 This is why the uniformity figure in the README example is 0.37: the blend
 bands are genuinely brighter than the image centres, and the wall ends are
 struck at up to 28° incidence. A real installation corrects the first with edge
-blending and lives with the second.
+blending and lives with the second — or switches on the linear-ramp model and
+sees what the processor would deliver.
+
+The linear ramp is itself a first-order assumption: complementary straight-line
+ramps, no gamma shaping and no per-band trimming. Real processors often shape
+the curve; treat absolute numbers inside a blend zone accordingly.
 
 All brightness figures carry the assumptions listed in the
 [feature reference](index.md#brightness--corephotometrypy) — most importantly

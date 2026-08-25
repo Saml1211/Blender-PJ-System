@@ -8,7 +8,7 @@ loaded, which is what the test suite and any headless tooling use.
 bl_info = {
     "name": "Projection Planner",
     "author": "Sam Lyndon",
-    "version": (0, 2, 0),
+    "version": (0, 3, 0),
     "blender": (4, 2, 0),
     "location": "View3D > Sidebar > Projection",
     "description": (

@@ -333,6 +333,28 @@ class PJ_PG_Scene(PropertyGroup):
     )
     grid_s: IntProperty(name="Coverage Grid (arc)", default=120, min=8, max=600)
     grid_z: IntProperty(name="Coverage Grid (height)", default=24, min=4, max=200)
+    blend_model: EnumProperty(
+        name="Blend Model",
+        description=(
+            "How overlapping projectors' light combines. Raw adds it all up "
+            "(no processor in the chain); linear ramp models what an "
+            "edge-blending processor does across each overlap"
+        ),
+        items=[
+            (
+                "RAW",
+                "Raw (additive)",
+                "Overlapping images simply add - correct when no blending processor is used",
+            ),
+            (
+                "LINEAR_RAMP",
+                "Linear blend ramp",
+                "Across each overlap one image ramps down while the other ramps up, "
+                "as an edge-blending processor would",
+            ),
+        ],
+        default="RAW",
+    )
     screen_gain: FloatProperty(
         name="Screen Gain",
         description="Gain of the wall finish. 1.0 is a matte white Lambertian surface",

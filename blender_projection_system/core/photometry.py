@@ -26,8 +26,9 @@ ramp a blending processor would apply.
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from enum import Enum
 
 from .errors import ProjectionError, require_positive
 from .throw import ProjectorSpec
@@ -152,10 +153,60 @@ ASSUMPTIONS: list[str] = [
     "overlapping projectors add linearly (no blend-processor ramp)",
 ]
 
+#: Assumption line that replaces the additive one when a blend ramp is applied.
+_LINEAR_RAMP_ASSUMPTION = (
+    "blend zones modelled with complementary linear luminance ramps "
+    "(real processors often use gamma-shaped curves; check yours)"
+)
+
+
+class BlendModel(str, Enum):
+    """How overlapping projectors' illuminance is combined.
+
+    ``RAW`` is simple addition - two images fully stacked means twice the
+    light, which is what happens with no blending processor in the chain.
+    ``LINEAR_RAMP`` models what an edge-blending processor does: across each
+    overlap one image ramps down while the other ramps up so the *combined*
+    luminance stays flat through the blend zone.
+    """
+
+    RAW = "raw"
+    LINEAR_RAMP = "linear_ramp"
+
+
+def assumptions_for_blend_model(model: BlendModel) -> list[str]:
+    """The assumption lines that apply to a given blend model."""
+    if model is BlendModel.LINEAR_RAMP:
+        return [
+            _LINEAR_RAMP_ASSUMPTION if a.startswith("overlapping") else a
+            for a in ASSUMPTIONS
+        ]
+    return list(ASSUMPTIONS)
+
+
+def linear_ramp_weight(
+    s: float, zone_start: float, zone_end: float, *, side: str
+) -> float:
+    """Weight a blending processor applies to one image at arc position ``s``.
+
+    Across the zone ``[zone_start, zone_end]`` the *left* projector ramps
+    from full output to zero while the *right* one ramps from zero to full,
+    so the pair's weights always sum to 1.0. Outside the zone the weights
+    clamp to 1.0 / 0.0 respectively. Raises :class:`ProjectionError` for a
+    zero-width zone.
+    """
+    width = zone_end - zone_start
+    if width <= 0.0:
+        raise ProjectionError("blend zone must have positive width")
+    fraction = (s - zone_start) / width
+    weight = 1.0 - fraction if side == "left" else fraction
+    return min(1.0, max(0.0, weight))
+
 
 def summarize_brightness(
     lux_values: Iterable[float],
     screen_gain: float = 1.0,
+    assumptions: Sequence[str] | None = None,
 ) -> BrightnessReport:
     values = [v for v in lux_values]
     if not values:
@@ -177,7 +228,7 @@ def summarize_brightness(
         mean_foot_lamberts=nits_to_foot_lamberts(luminance_nits(mean, screen_gain)),
         uniformity=uniformity,
         screen_gain=screen_gain,
-        assumptions=list(ASSUMPTIONS),
+        assumptions=list(assumptions) if assumptions is not None else list(ASSUMPTIONS),
     )
 
 

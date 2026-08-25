@@ -203,6 +203,7 @@ class PJ_PT_analysis(_Base):
         row.prop(pj, "grid_s", text="Grid Arc")
         row.prop(pj, "grid_z", text="Height")
         col.prop(pj, "screen_gain")
+        col.prop(pj, "blend_model", text="Overlap")
         col.prop(pj, "draw_frustums")
 
 

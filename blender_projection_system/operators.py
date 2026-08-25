@@ -23,7 +23,7 @@ from .core.array import MODE_LEVEL, MODE_TILT, format_placement, plan_array
 from .core.coverage import analyze_coverage, format_report
 from .core.errors import ProjectionError
 from .core.footprint import compute_footprint
-from .core.photometry import brightness_warnings
+from .core.photometry import BlendModel, brightness_warnings
 from .core.pose import level_pose, look_at
 from .core.surfaces import CylindricalWall
 from .core.throw import ProjectorSpec, describe_throw, image_size, required_lens_shift_v
@@ -518,7 +518,12 @@ class PJ_OT_analyze(Operator):
             warnings.extend(describe_throw(max(fp.center_distance, 1e-3), spec).warnings)
 
         report = analyze_coverage(
-            footprints, wall, grid_s=pj.grid_s, grid_z=pj.grid_z, screen_gain=pj.screen_gain
+            footprints,
+            wall,
+            grid_s=pj.grid_s,
+            grid_z=pj.grid_z,
+            screen_gain=pj.screen_gain,
+            blend_model=BlendModel[pj.blend_model],  # identifier -> member
         )
         warnings.extend(report.warnings)
         if report.brightness is not None:

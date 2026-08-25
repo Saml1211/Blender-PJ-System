@@ -163,3 +163,50 @@ def test_non_finite_photometric_inputs_are_rejected(value):
         ph.luminance_nits(value)
     with pytest.raises(ProjectionError):
         ph.summarize_brightness([value])
+
+
+# -- blend ramp modelling -------------------------------------------------
+
+
+def test_linear_ramp_weights_are_complementary_everywhere():
+    """A blending processor ramps one image down as the other comes up, so
+    the pair's combined weight stays unity through the zone."""
+    zone_start, zone_end = 2.0, 4.0
+    positions = [1.0, 1.99, 2.0, 2.5, 3.0, 3.999, 4.0, 5.0]
+    for s in positions:
+        left = ph.linear_ramp_weight(s, zone_start, zone_end, side="left")
+        right = ph.linear_ramp_weight(s, zone_start, zone_end, side="right")
+        assert left + right == pytest.approx(1.0)
+
+
+def test_linear_ramp_clamps_outside_the_zone():
+    # Before the zone the left projector runs at full output; after it, the
+    # right one does. Weights never leave [0, 1].
+    for s in (0.0, 1.5):
+        assert ph.linear_ramp_weight(s, 2.0, 4.0, side="left") == pytest.approx(1.0)
+        assert ph.linear_ramp_weight(s, 2.0, 4.0, side="right") == pytest.approx(0.0)
+    for s in (4.5, 9.0):
+        assert ph.linear_ramp_weight(s, 2.0, 4.0, side="left") == pytest.approx(0.0)
+        assert ph.linear_ramp_weight(s, 2.0, 4.0, side="right") == pytest.approx(1.0)
+
+
+def test_linear_ramp_is_halfway_at_the_zone_midpoint():
+    assert ph.linear_ramp_weight(3.0, 2.0, 4.0, side="left") == pytest.approx(0.5)
+    assert ph.linear_ramp_weight(3.0, 2.0, 4.0, side="right") == pytest.approx(0.5)
+
+
+def test_linear_ramp_rejects_a_degenerate_zone():
+    with pytest.raises(ProjectionError):
+        ph.linear_ramp_weight(3.0, 2.0, 2.0, side="left")
+
+
+def test_assumptions_for_raw_blend_model_keep_the_additive_line():
+    assumptions = ph.assumptions_for_blend_model(ph.BlendModel.RAW)
+    assert any("add linearly" in a for a in assumptions)
+    assert assumptions == ph.ASSUMPTIONS
+
+
+def test_assumptions_for_linear_ramp_describe_the_ramp():
+    assumptions = ph.assumptions_for_blend_model(ph.BlendModel.LINEAR_RAMP)
+    assert any("linear" in a.lower() for a in assumptions)
+    assert not any("no blend" in a for a in assumptions)

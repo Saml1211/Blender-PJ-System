@@ -6,6 +6,7 @@ import math
 
 import pytest
 
+from blender_projection_system.core import photometry as ph
 from blender_projection_system.core.coverage import (
     Interval,
     analyze_coverage,
@@ -238,3 +239,78 @@ def test_full_circle_blend_crossing_the_seam_stays_one_narrow_zone():
 def test_invalid_grid_dimensions_raise_projection_error(wall, grid_s, grid_z):
     with pytest.raises(ProjectionError, match="grid dimensions"):
         analyze_coverage([], wall, grid_s=grid_s, grid_z=grid_z)
+
+
+# -- blend luminance ramp --------------------------------------------------
+
+
+def _overlapping_pair(wall):
+    spec = ProjectorSpec(throw_ratio=1.5, lumens=5000.0)
+    a = _projector_at(wall, wall.arc_length * 0.4, 4.5, spec, "Left")
+    b = _projector_at(wall, wall.arc_length * 0.6, 4.5, spec, "Right")
+    return a, b
+
+
+def test_default_blend_model_is_raw_additive(wall):
+    fps = _overlapping_pair(wall)
+    report = analyze_coverage(fps, wall, grid_s=60, grid_z=16)
+    assert report.blend_model == ph.BlendModel.RAW
+
+
+def test_linear_ramp_flattens_brightness_across_the_blend(wall):
+    """With complementary ramps applied the overlap is no longer twice as
+    bright as its surroundings - it matches single-projector levels."""
+    one = _projector_at(
+        wall,
+        wall.arc_length / 2,
+        4.5,
+        ProjectorSpec(throw_ratio=1.5, lumens=5000.0),
+        "A",
+    )
+    single = analyze_coverage([one], wall, grid_s=80, grid_z=20)
+    assert single.brightness is not None
+
+    fps = _overlapping_pair(wall)
+    raw = analyze_coverage(fps, wall, grid_s=80, grid_z=20)
+    ramped = analyze_coverage(
+        fps, wall, grid_s=80, grid_z=20, blend_model=ph.BlendModel.LINEAR_RAMP
+    )
+    assert raw.brightness and ramped.brightness
+    assert ramped.blend_model == ph.BlendModel.LINEAR_RAMP
+
+    # Raw additive overlap pushes max illuminance well above any single image.
+    assert raw.brightness.max_lux > 1.6 * single.brightness.max_lux
+    # The ramp keeps the blend zone at roughly one projector's worth of light.
+    assert ramped.brightness.max_lux < 1.2 * single.brightness.max_lux
+    # And the ramped result is dimmer overall than the additive one.
+    assert ramped.brightness.mean_lux < raw.brightness.mean_lux
+
+
+def test_ramped_report_carries_the_blend_assumption(wall):
+    fps = _overlapping_pair(wall)
+    ramped = analyze_coverage(
+        fps, wall, grid_s=60, grid_z=16, blend_model=ph.BlendModel.LINEAR_RAMP
+    )
+    raw = analyze_coverage(fps, wall, grid_s=60, grid_z=16)
+    assert any("linear" in a.lower() for a in ramped.brightness.assumptions)
+    assert any("add linearly" in a for a in raw.brightness.assumptions)
+
+
+def test_format_report_names_the_blend_model_when_blending_is_applied(wall):
+    spec = ProjectorSpec(throw_ratio=1.0, lumens=6000.0)
+    a = _projector_at(wall, wall.arc_length * 0.35, 4.5, spec, "Left")
+    b = _projector_at(wall, wall.arc_length * 0.65, 4.5, spec, "Right")
+
+    raw_lines = format_report(analyze_coverage([a, b], wall, grid_s=60, grid_z=16))
+    assert not any("blend model" in line for line in raw_lines)
+
+    ramp_lines = format_report(
+        analyze_coverage(
+            [a, b],
+            wall,
+            grid_s=60,
+            grid_z=16,
+            blend_model=ph.BlendModel.LINEAR_RAMP,
+        )
+    )
+    assert any("linear-ramp blend model" in line for line in ramp_lines)

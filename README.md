@@ -21,7 +21,7 @@ reach. All of it computed, not drawn by hand.*
 
 ## Status — read this before trusting a number
 
-This is **v0.2**. The table below is the whole truth about what works.
+This is **v0.3**. The table below is the whole truth about what works.
 
 ### Implemented and tested
 
@@ -34,6 +34,7 @@ This is **v0.2**. The table below is the whole truth about what works.
 | Projector aiming | Aim-at-target, plus a level (lens-shift) and a tilt mounting mode. |
 | Array planning | Lay *N* projectors across a wall at a requested overlap. Solves numerically for the standoff distance that produces the required arc width. |
 | Coverage / gaps / blend zones | Rasterised over the wall in arc-length × height. Reports lit area, dark bands, blend widths, and overlap count. |
+| Blend luminance modelling | Optional linear-ramp model of what an edge-blending processor does across each overlap — the combined luminance stays flat through the blend zone instead of doubling. Off by default; see *Experimental / limited*. |
 | Brightness | Illuminance and luminance from real per-point distance and incidence. **First-order estimate — see the assumptions below.** |
 | Non-destructive scene output | Generated content is owner-tagged and organised in dedicated collections. Re-plan/clear removes only add-on-owned generated objects. |
 
@@ -50,9 +51,8 @@ plus a headless Blender smoke workflow. Both run in CI.
   uniform intensity across the frustum, full rated lumens, a Lambertian screen,
   **zero ambient light**, and linear addition in overlaps. Real rooms are
   dimmer. Derate deliberately.
-- **Blend zones are geometry only.** The add-on tells you where images overlap
-  and how wide the overlap is. It does not model the soft-edge luminance ramp a
-  blending processor applies.
+- **Blend-zone geometry is always reported; the luminance ramp is opt-in.** The add-on tells you where images overlap and how wide the overlap is. Without the ramp (the default) overlapping light adds linearly; with **Linear blend ramp** it models complementary ramps as described above.
+- **The blend ramp is a first-order model.** With **Overlap ▸ Linear blend ramp**, each pair's images ramp down/up complementarily across their overlap, so blend-zone brightness matches single-image levels. Real processors often use gamma-shaped curves and per-band fine-trimming; check yours before trusting absolute numbers in the zone. Triple overlaps stay additive because they are flagged as placement errors.
 - **Target transforms are constrained.** Generated walls may be translated,
   but rotation or unapplied scale is rejected because the implemented surface
   is a vertical circular cylinder, not an arbitrary transformed mesh.

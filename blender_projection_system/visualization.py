@@ -55,15 +55,26 @@ PALETTE: tuple[tuple[float, float, float, float], ...] = (
 # ---------------------------------------------------------------------------
 
 
-def get_collection(context, name: str) -> bpy.types.Collection:
+def _scene_from(context_or_scene) -> bpy.types.Scene:
+    return (
+        context_or_scene
+        if isinstance(context_or_scene, bpy.types.Scene)
+        else context_or_scene.scene
+    )
+
+
+def get_collection(context_or_scene, name: str) -> bpy.types.Collection:
     """Fetch or create an add-on-owned top-level collection.
 
-    A user collection with the preferred display name is never adopted.
+    Accepting either a context or a scene lets timer-driven synchronization use
+    the direct data API without depending on whichever editor has focus. A user
+    collection with the preferred display name is never adopted.
     """
+    scene = _scene_from(context_or_scene)
     coll = next(
         (
             candidate
-            for candidate in context.scene.collection.children
+            for candidate in scene.collection.children
             if candidate.get(OWNER_KEY) == OWNER_ID and candidate.get(ROLE_KEY) == name
         ),
         None,
@@ -75,8 +86,8 @@ def get_collection(context, name: str) -> bpy.types.Collection:
         coll = bpy.data.collections.new(preferred)
         coll[OWNER_KEY] = OWNER_ID
         coll[ROLE_KEY] = name
-    if coll.name not in context.scene.collection.children:
-        context.scene.collection.children.link(coll)
+    if coll.name not in scene.collection.children:
+        scene.collection.children.link(coll)
     return coll
 
 
@@ -89,12 +100,13 @@ def link_only_to(obj: bpy.types.Object, coll: bpy.types.Collection) -> None:
         coll.objects.link(obj)
 
 
-def clear_collection(context, name: str) -> int:
+def clear_collection(context_or_scene, name: str) -> int:
     """Delete owned objects from this scene's owned collection only."""
+    scene = _scene_from(context_or_scene)
     coll = next(
         (
             candidate
-            for candidate in context.scene.collection.children
+            for candidate in scene.collection.children
             if candidate.get(OWNER_KEY) == OWNER_ID and candidate.get(ROLE_KEY) == name
         ),
         None,

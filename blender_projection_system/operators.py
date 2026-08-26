@@ -19,14 +19,27 @@ from bpy.props import BoolProperty, FloatProperty, IntProperty
 from bpy.types import Operator
 
 from . import visualization as viz
-from .core.array import MODE_LEVEL, MODE_TILT, format_placement, plan_array
-from .core.coverage import analyze_coverage, format_report
+from .core.array import MODE_LEVEL, MODE_TILT
 from .core.errors import ProjectionError
-from .core.footprint import compute_footprint
-from .core.photometry import BlendModel, brightness_warnings
 from .core.pose import level_pose, look_at
 from .core.surfaces import CylindricalWall, PlanarWall, Surface
-from .core.throw import ProjectorSpec, describe_throw, image_size, required_lens_shift_v
+from .core.throw import ProjectorSpec, image_size, required_lens_shift_v
+from .scene_sync import (
+    pose_from_matrix as _sync_pose_from_matrix,
+)
+from .scene_sync import (
+    projectors_in_scene as _sync_projectors_in_scene,
+)
+from .scene_sync import (
+    scene_spec as _sync_scene_spec,
+)
+from .scene_sync import (
+    set_report as _sync_set_report,
+)
+from .scene_sync import (
+    sync_analysis,
+    sync_array,
+)
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -34,18 +47,8 @@ from .core.throw import ProjectorSpec, describe_throw, image_size, required_lens
 
 
 def _set_report(scene, lines: list[str], warnings: list[str]) -> None:
-    """Replace the stored report shown in the sidebar."""
-    pj = scene.pj
-    pj.report_lines.clear()
-    for line in lines:
-        entry = pj.report_lines.add()
-        entry.text = line
-        entry.kind = "INFO"
-    for warning in warnings:
-        entry = pj.report_lines.add()
-        entry.text = warning
-        entry.kind = "WARNING"
-    pj.has_report = True
+    """Compatibility wrapper for the shared report writer."""
+    _sync_set_report(scene, lines, warnings)
 
 
 def _resolve_wall(context) -> bpy.types.Object | None:
@@ -88,20 +91,11 @@ def _manual_pose_and_spec(position, target, spec: ProjectorSpec, mode: str):
 
 
 def _scene_spec(scene) -> ProjectorSpec:
-    pj = scene.pj
-    return ProjectorSpec(
-        throw_ratio=pj.throw_ratio,
-        aspect_w=pj.aspect_w,
-        aspect_h=pj.aspect_h,
-        lumens=pj.lumens,
-        max_lens_shift_v=pj.max_lens_shift_v,
-    )
+    return _sync_scene_spec(scene)
 
 
 def _projectors_in_scene(context) -> list[bpy.types.Object]:
-    return [
-        obj for obj in context.scene.objects if obj.pj_projector.is_projector and obj.visible_get()
-    ]
+    return _sync_projectors_in_scene(context.scene)
 
 
 # ---------------------------------------------------------------------------
@@ -466,87 +460,29 @@ class PJ_OT_plan_array(Operator):
 
     def execute(self, context):
         scene = context.scene
-        pj = scene.pj
         wall_obj = _resolve_wall(context)
         if wall_obj is None:
             self.report({"ERROR"}, "No target wall set. Create one first.")
             return {"CANCELLED"}
+        scene.pj.target_wall = wall_obj
 
         try:
-            wall = _wall_for_operation(wall_obj)
+            result = sync_array(scene)
         except ProjectionError as exc:
             self.report({"ERROR"}, str(exc))
             return {"CANCELLED"}
-
-        try:
-            plan = plan_array(
-                wall,
-                _scene_spec(scene),
-                count=pj.projector_count,
-                overlap_fraction=pj.overlap,
-                mount_height=pj.mount_height,
-                image_center_height=pj.image_center_height,
-                mode=pj.mount_mode,
-                samples=pj.samples,
-                name_prefix="PJ",
-            )
-        except ProjectionError as exc:
-            self.report({"ERROR"}, str(exc))
-            return {"CANCELLED"}
-
-        coll = viz.get_collection(context, viz.COLLECTION_PROJECTORS)
-        if self.replace_existing:
-            for obj in list(coll.objects):
-                if (
-                    obj.pj_projector.is_projector
-                    and obj.get("pj_generated")
-                    and obj.get(viz.OWNER_KEY) == viz.OWNER_ID
-                ):
-                    data = obj.data
-                    bpy.data.objects.remove(obj, do_unlink=True)
-                    if isinstance(data, bpy.types.Camera) and data.users == 0:
-                        bpy.data.cameras.remove(data)
-
-        created = []
-        for placement in plan.placements:
-            cam_data = bpy.data.cameras.new(placement.name)
-            obj = bpy.data.objects.new(placement.name, cam_data)
-            obj[viz.OWNER_KEY] = viz.OWNER_ID
-            obj["pj_generated"] = True
-            obj.matrix_world = viz.pose_matrix(placement.position, placement.pose.basis_columns())
-            viz.apply_spec_to_object(obj, placement.spec, placement.mode)
-            viz.configure_camera(obj, placement.spec, placement.throw_distance)
-            viz.store_placement_results(obj, placement)
-            viz.link_only_to(obj, coll)
-            created.append(obj)
-
-        warnings = list(plan.warnings)
-        for placement in plan.placements:
-            warnings.extend(placement.warnings)
-
-        lines = [
-            f"Planned {len(created)} projector(s) on '{wall_obj.name}'",
-            f"Target image width per projector: {plan.target_arc_width:.2f} m of arc "
-            f"at {pj.overlap * 100:.0f}% overlap",
-            f"Mount height {pj.mount_height:.2f} m, image centre {pj.image_center_height:.2f} m "
-            "above wall base, "
-            f"mode {pj.mount_mode}",
-        ]
-        for placement in plan.placements:
-            lines.extend(format_placement(placement))
-        _set_report(scene, lines, warnings)
 
         bpy.ops.object.select_all(action="DESELECT")
-        for obj in created:
+        for obj in result.projectors:
             obj.select_set(True)
-        if created:
-            context.view_layer.objects.active = created[0]
+        if result.projectors:
+            context.view_layer.objects.active = result.projectors[0]
 
-        level = {"WARNING"} if warnings else {"INFO"}
+        level = {"WARNING"} if result.warnings else {"INFO"}
         self.report(
             level,
-            f"Planned {len(created)} projector(s); {len(warnings)} warning(s). "
-            "See the Report panel.",
+            f"Planned {len(result.projectors)} projector(s); "
+            f"{len(result.warnings)} warning(s). See the Report panel.",
         )
         return {"FINISHED"}
 
@@ -575,108 +511,31 @@ class PJ_OT_analyze(Operator):
 
     def execute(self, context):
         scene = context.scene
-        pj = scene.pj
         wall_obj = _resolve_wall(context)
         if wall_obj is None:
             self.report({"ERROR"}, "No target wall set. Create one first.")
             return {"CANCELLED"}
-
-        projectors = _projectors_in_scene(context)
-        if not projectors:
-            self.report(
-                {"ERROR"},
-                "No projectors in the scene. Use Add Projector or Plan Projector Array.",
-            )
-            return {"CANCELLED"}
+        scene.pj.target_wall = wall_obj
 
         try:
-            wall = _wall_for_operation(wall_obj)
+            result = sync_analysis(scene, visualize=self.visualize)
         except ProjectionError as exc:
             self.report({"ERROR"}, str(exc))
             return {"CANCELLED"}
-        footprints = []
-        warnings: list[str] = []
 
-        for obj in projectors:
-            spec = viz.spec_from_object(obj)
-            matrix = obj.matrix_world
-            # Blender cameras look down -Z, matching the core pose convention.
-            pose = _pose_from_matrix(matrix)
-            try:
-                fp = compute_footprint(pose, spec, wall, samples=pj.samples, name=obj.name)
-            except ProjectionError as exc:
-                self.report({"ERROR"}, f"{obj.name}: {exc}")
-                return {"CANCELLED"}
-            footprints.append(fp)
-            viz.store_footprint_results(obj, fp, pj.screen_gain)
-            warnings.extend(fp.warnings)
-            warnings.extend(describe_throw(max(fp.center_distance, 1e-3), spec).warnings)
-
-        report = analyze_coverage(
-            footprints,
-            wall,
-            grid_s=pj.grid_s,
-            grid_z=pj.grid_z,
-            screen_gain=pj.screen_gain,
-            blend_model=BlendModel[pj.blend_model],  # identifier -> member
-        )
-        warnings.extend(report.warnings)
-        if report.brightness is not None:
-            warnings.extend(brightness_warnings(report.brightness))
-
-        lines = format_report(report)
-        lines.append("Projector mounting and throw:")
-        for obj in sorted(projectors, key=lambda candidate: candidate.name):
-            props = obj.pj_projector
-            location = obj.matrix_world.translation
-            lines.append(
-                f"  {obj.name}: mount x={location.x:+.2f} y={location.y:+.2f} "
-                f"z={location.z:.2f} m; throw {props.calc_throw_distance:.2f} m; "
-                f"image {props.calc_image_width:.2f} x {props.calc_image_height:.2f} m; "
-                f"shift V={props.lens_shift_v * 100:+.1f}% H={props.lens_shift_h * 100:+.1f}%"
-            )
-        if report.brightness is not None:
-            lines.append("Brightness assumptions: " + "; ".join(report.brightness.assumptions))
-        _set_report(scene, lines, warnings)
-
-        if self.visualize:
-            viz.clear_collection(context, viz.COLLECTION_ANALYSIS)
-            for i, fp in enumerate(footprints):
-                viz.build_footprint_object(context, fp, wall, i)
-                if pj.draw_frustums:
-                    viz.build_frustum_object(context, fp, i)
-            viz.build_gap_object(context, wall, report.gaps)
-            viz.build_blend_object(context, wall, report.blend_zones)
-
-        level = {"WARNING"} if warnings else {"INFO"}
+        level = {"WARNING"} if result.warnings else {"INFO"}
         self.report(
             level,
-            f"Coverage {report.covered_fraction * 100:.1f}% of wall area, "
-            f"{report.horizontal_coverage * 100:.1f}% of the arc; "
-            f"{len(report.gaps)} gap(s), {len(report.blend_zones)} blend zone(s)",
+            f"Coverage {result.covered_fraction * 100:.1f}% of wall area, "
+            f"{result.horizontal_coverage * 100:.1f}% of the arc; "
+            f"{result.gap_count} gap(s), {result.blend_count} blend zone(s)",
         )
         return {"FINISHED"}
 
 
 def _pose_from_matrix(matrix):
-    """Build a core :class:`Pose` from a Blender world matrix.
-
-    Local +X is right, +Y is up and -Z is the optical axis, so ``forward`` is
-    the negated third column.
-    """
-    from .core.pose import Pose
-
-    basis = matrix.to_quaternion().to_matrix()
-    origin = matrix.translation
-    col_x = basis.col[0]
-    col_y = basis.col[1]
-    col_z = basis.col[2]
-    return Pose(
-        origin=(origin.x, origin.y, origin.z),
-        right=(col_x.x, col_x.y, col_x.z),
-        up=(col_y.x, col_y.y, col_y.z),
-        forward=(-col_z.x, -col_z.y, -col_z.z),
-    )
+    """Compatibility wrapper for the shared Blender-to-core pose adapter."""
+    return _sync_pose_from_matrix(matrix)
 
 
 class PJ_OT_clear_analysis(Operator):

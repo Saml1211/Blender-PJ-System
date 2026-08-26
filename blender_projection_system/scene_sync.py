@@ -379,6 +379,17 @@ def _flush_pending() -> float | None:
     return None
 
 
+def pending_scope(scene: bpy.types.Scene) -> SyncScope | None:
+    """Return the currently queued scope for diagnostics and acceptance tests."""
+    pending = _pending.get(scene.name_full)
+    return pending[0] if pending is not None else None
+
+
+def timer_registered() -> bool:
+    """Whether this module currently owns a registered Blender timer."""
+    return _timer_registered and bpy.app.timers.is_registered(_flush_pending)
+
+
 def flush_scene_sync(scene: bpy.types.Scene) -> bool:
     """Immediately run a queued refresh; used by explicit operators and tests."""
     pending = _pending.pop(scene.name_full, None)

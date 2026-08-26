@@ -397,6 +397,101 @@ def main() -> None:
     )
     check(result == {"FINISHED"}, "curved wall restored after flat-wall checks")
 
+    # -- 2e. controls converge cameras, overlays and reports automatically --
+    print("\n[2e] all dependent scene state updates live")
+    import blender_projection_system.scene_sync as live
+
+    pj = scene.pj
+    pj.throw_ratio = 1.2
+    pj.aspect_w, pj.aspect_h = 16, 9
+    pj.lumens = 7000.0
+    pj.max_lens_shift_v = 0.6
+    pj.mount_mode = "LEVEL"
+    pj.mount_height = 3.2
+    pj.image_center_height = 1.65
+    pj.projector_count = 3
+    pj.overlap = 0.15
+    pj.samples = 9
+    check(live.pending_scope(scene) is not None, "property edits queue a live refresh")
+    check(live.flush_scene_sync(scene), "queued live refresh succeeds")
+
+    live_projectors = sorted(
+        (
+            obj
+            for obj in scene.objects
+            if obj.get("pj_object_role") == live.ARRAY_OBJECT_ROLE
+        ),
+        key=lambda obj: obj.name,
+    )
+    check(len(live_projectors) == 3, "target controls create the live three-projector array")
+    live_ids = [obj.as_pointer() for obj in live_projectors]
+    analysis_collection = viz.get_collection(scene, viz.COLLECTION_ANALYSIS)
+    check(len(analysis_collection.objects) > 0, "live refresh creates analysis overlays")
+    check(scene.pj.has_report, "live refresh creates the report")
+
+    pj.projector_count = 2
+    pj.overlap = 0.20
+    pj.mount_height = 3.4
+    check(live.pending_scope(scene) == live.SyncScope.ARRAY, "array edit queues array scope")
+    check(live.flush_scene_sync(scene), "live array edit converges")
+    live_projectors = sorted(
+        (
+            obj
+            for obj in scene.objects
+            if obj.get("pj_object_role") == live.ARRAY_OBJECT_ROLE
+        ),
+        key=lambda obj: obj.name,
+    )
+    check(len(live_projectors) == 2, "live count edit removes one owned camera")
+    check(live_projectors[0].as_pointer() in live_ids, "live replan reuses camera objects")
+    check(
+        all(approx(obj.matrix_world.translation.z, 3.4) for obj in live_projectors),
+        "live mount-height edit moves every owned camera",
+    )
+
+    pj.blend_model = "LINEAR_RAMP"
+    check(
+        live.pending_scope(scene) == live.SyncScope.ANALYSIS,
+        "analysis edit queues analysis scope only",
+    )
+    check(live.flush_scene_sync(scene), "live blend-model edit converges")
+    report_text = "\n".join(entry.text for entry in scene.pj.report_lines).lower()
+    check("linear" in report_text, "live report reflects the selected blend model")
+
+    first_projector = live_projectors[0]
+    before_nits = first_projector.pj_projector.calc_mean_nits
+    first_projector.pj_projector.lumens = 3500.0
+    check(live.flush_scene_sync(scene), "individual projector edit refreshes analysis")
+    check(
+        first_projector.pj_projector.calc_mean_nits < before_nits,
+        "individual lumens edit updates computed brightness",
+    )
+
+    live_wall = scene.pj.target_wall
+    if live_wall is None:
+        check(False, "live target wall remains available")
+        return
+    camera_state = [tuple(tuple(row) for row in obj.matrix_world) for obj in live_projectors]
+    overlay_state = sorted(obj.as_pointer() for obj in analysis_collection.objects)
+    live_wall.pj_wall.arc_end_deg = live_wall.pj_wall.arc_start_deg
+    check(not live.flush_scene_sync(scene), "invalid live edit is rejected")
+    check(bool(scene.pj.live_error), "invalid live edit exposes an error")
+    check(
+        camera_state == [tuple(tuple(row) for row in obj.matrix_world) for obj in live_projectors],
+        "invalid live edit preserves the last valid cameras",
+    )
+    check(
+        overlay_state == sorted(obj.as_pointer() for obj in analysis_collection.objects),
+        "invalid live edit preserves the last valid overlays",
+    )
+    live_wall.pj_wall.arc_end_deg = 45.0
+    pj.projector_count = 3
+    pj.overlap = 0.15
+    pj.mount_height = 3.2
+    pj.blend_model = "RAW"
+    check(live.flush_scene_sync(scene), "next valid edit resumes live updates")
+    check(not scene.pj.live_error, "successful live refresh clears the error")
+
     # -- 3. plan a three-projector array -----------------------------------
     print("\n[3] plan a 3-projector ceiling array")
     pj = scene.pj
@@ -606,9 +701,8 @@ def main() -> None:
     other_analysis.objects.link(other_obj)
     bpy.context.window.scene = scene
     check(bpy.ops.projection.clear_analysis() == {"FINISHED"}, "clear_analysis finished")
-    leftover = bpy.data.collections.get("PJ Analysis")
     check(
-        leftover is not None and len(leftover.objects) == 1,
+        user_analysis.name in bpy.data.collections and len(user_analysis.objects) == 1,
         "same-named user collection remains untouched after clearing",
     )
     check(user_obj.name in bpy.data.objects, "user analysis object survives clearing")
@@ -619,9 +713,44 @@ def main() -> None:
     )
     check(scene.pj.target_wall is not None, "clearing the analysis leaves the wall alone")
 
+    import blender_projection_system.procedural_geometry as pg
+
+    groups_before = [
+        group
+        for group in bpy.data.node_groups
+        if group.get(viz.OWNER_KEY) == viz.OWNER_ID
+        and group.get("pj_node_role") == pg.NODE_ROLE
+    ]
+    live_wall_name = live_wall.name
+    live.request_scene_sync(scene, live.SyncScope.ANALYSIS, delay=60.0)
+    check(live.timer_registered(), "live timer is registered before teardown")
     pjs.unregister()
+    check(not live.timer_registered(), "unregister cancels the live timer")
     pjs.unregister()
     check(not hasattr(bpy.types.Scene, "pj"), "Scene.pj removed on unregister")
+
+    pjs.register()
+    check(hasattr(bpy.types.Scene, "pj"), "Scene.pj restores after reload")
+    reloaded_wall = bpy.data.objects.get(live_wall_name)
+    if reloaded_wall is None:
+        check(False, "procedural wall survives add-on reload")
+        return
+    check(pg.is_procedural_wall(reloaded_wall), "procedural wall survives add-on reload")
+    groups_after = [
+        group
+        for group in bpy.data.node_groups
+        if group.get(viz.OWNER_KEY) == viz.OWNER_ID
+        and group.get("pj_node_role") == pg.NODE_ROLE
+    ]
+    check(len(groups_after) == len(groups_before) == 1, "reload does not duplicate node groups")
+    owned_modifiers = [
+        modifier
+        for modifier in reloaded_wall.modifiers
+        if modifier.node_group is not None
+        and modifier.node_group.get("pj_node_role") == pg.NODE_ROLE
+    ]
+    check(len(owned_modifiers) == 1, "reload does not duplicate wall modifiers")
+    pjs.unregister()
 
 
 if __name__ == "__main__":

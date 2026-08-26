@@ -21,7 +21,7 @@ reach. All of it computed, not drawn by hand.*
 
 ## Status — read this before trusting a number
 
-This is **v0.3**. The table below is the whole truth about what works.
+This is **v0.4**. The table below is the whole truth about what works.
 
 ### Implemented and tested
 

@@ -1,7 +1,7 @@
 # ADR 0004: Arbitrary-mesh projection targets via an injectable ray-caster
 
-**Status:** Proposed
-**Date:** 2026-08-26
+**Status:** Accepted
+**Date:** 2026-08-26 (accepted 2026-08-26)
 
 ## Context
 

@@ -195,9 +195,7 @@ def _mesh_wall_from_object(obj: bpy.types.Object) -> MeshSurface:
     mesh.calc_loop_triangles()
     tris = [tuple(lt.vertices) for lt in mesh.loop_triangles]
     if not tris:
-        raise ProjectionError(
-            f"'{obj.name}' could not be triangulated for ray casting"
-        )
+        raise ProjectionError(f"'{obj.name}' could not be triangulated for ray casting")
     if len(tris) > MAX_MESH_TRIS:
         raise ProjectionError(
             f"'{obj.name}' has {len(tris)} triangles (limit {MAX_MESH_TRIS}); "

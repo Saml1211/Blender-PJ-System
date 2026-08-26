@@ -99,9 +99,7 @@ class TestSurfaceContract:
     @pytest.fixture()
     def flat_mesh(self) -> MeshSurface:
         vertices, triangles = _flat_quad_mesh()
-        return MeshSurface.from_triangles(
-            vertices, triangles, scan_s=16, scan_z=10, name="flat"
-        )
+        return MeshSurface.from_triangles(vertices, triangles, scan_s=16, scan_z=10, name="flat")
 
     def test_point_at_lands_on_the_wall_face(self, flat_mesh: MeshSurface) -> None:
         # Depth reference is the centroid plane; a flat wall has zero depth.
@@ -126,9 +124,7 @@ class TestSurfaceContract:
         assert flat_mesh.intersect_ray((0.0, -5.0, 1.0), (1.0, 0.0, 0.0)) is None
         assert flat_mesh.intersect_ray((0.0, 0.0, 9.0), (1.0, 0.0, 0.0)) is None
 
-    def test_a_ray_from_behind_the_wall_is_rejected(
-        self, flat_mesh: MeshSurface
-    ) -> None:
+    def test_a_ray_from_behind_the_wall_is_rejected(self, flat_mesh: MeshSurface) -> None:
         # Parity with PlanarWall: a ray travelling along -facing comes from
         # the far side and never counts as a usable projection hit.
         assert flat_mesh.intersect_ray((9.0, 0.0, 1.0), (-1.0, 0.0, 0.0)) is None
@@ -153,9 +149,7 @@ class TestInjectedCasterParity:
 
         return FakeBVH
 
-    def test_injected_fake_agrees_with_pure_python_default(
-        self, fake_caster: type
-    ) -> None:
+    def test_injected_fake_agrees_with_pure_python_default(self, fake_caster: type) -> None:
         vertices, triangles = _flat_quad_mesh()
         default = MeshSurface.from_triangles(vertices, triangles, scan_s=16, scan_z=10)
         injected = MeshSurface.from_triangles(

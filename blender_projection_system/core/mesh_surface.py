@@ -232,11 +232,20 @@ class MeshSurface(Surface):
             z_min,
         )
 
-        tri_list = tuple((int(a), int(b), int(c)) for a, b, c in triangles)
-        float_vertices: list[Vec3] = [
-            # pi-lens-ignore: unchecked-throwing-call-python
-            (float(v[0]), float(v[1]), float(v[2])) for v in vertices
-        ]
+        tri_list_list: list[tuple[int, int, int]] = []
+        for tri in triangles:
+            try:
+                a, b, c = tri
+            except (TypeError, ValueError) as exc:
+                raise ProjectionError(
+                    f"mesh triangle data is malformed (need index triples): {exc}"
+                ) from exc
+            tri_list_list.append((a, b, c))
+        tri_list = tuple(tri_list_list)
+        try:
+            float_vertices = [(float(v[0]), float(v[1]), float(v[2])) for v in vertices]
+        except (TypeError, ValueError, IndexError) as exc:
+            raise ProjectionError(f"mesh vertex data is not numeric: {exc}") from exc
         resolved_caster = (
             caster if caster is not None else _PurePythonCaster(float_vertices, tri_list)
         )
@@ -349,9 +358,7 @@ class MeshSurface(Surface):
                 # s_min edge, so adding raw s here would push half the lines
                 # off the mesh.
                 s_offset = (i_s + 0.5) * ds
-                plane_point = cls.point_on_plane(
-                    origin=origin, right=right, s=s_offset, z=z
-                )
+                plane_point = cls.point_on_plane(origin=origin, right=right, s=s_offset, z=z)
                 # Start on the PROJECTOR side (the side ``facing`` points
                 # toward) and travel INTO the surface, so depth-varying
                 # meshes record their near face, not their far shell.
@@ -432,10 +439,8 @@ class MeshSurface(Surface):
         rows = len(self.depth_grid) if self.depth_grid else 1
         fx = (s / max(self.arc_length, 1e-9)) * cols - 0.5
         fz = (z / max(self.height, 1e-9)) * rows - 0.5
-        # pi-lens-ignore: unchecked-throwing-call-python
-        i_s = min(max(int(math.floor(fx)), 0), cols - 2) if cols >= 2 else 0
-        # pi-lens-ignore: unchecked-throwing-call-python
-        iz = min(max(int(math.floor(fz)), 0), rows - 2) if rows >= 2 else 0
+        i_s = min(max(math.floor(fx), 0), cols - 2) if cols >= 2 else 0
+        iz = min(max(math.floor(fz), 0), rows - 2) if rows >= 2 else 0
         tx = min(max(fx - i_s, 0.0), 1.0)
         tz = min(max(fz - iz, 0.0), 1.0)
         return i_s, iz, tx, tz
@@ -486,8 +491,7 @@ class MeshSurface(Surface):
         rows = len(self.depth_grid) if self.depth_grid else 0
         if cols == 0 or rows == 0:
             return self.facing
-        # pi-lens-ignore: unchecked-throwing-call-python
-        column = max(0, min(cols - 1, int(s / max(self.arc_length, 1e-9) * cols)))
+        column = max(0, min(cols - 1, math.floor(s / max(self.arc_length, 1e-9) * cols)))
         acc: Vec3 = (0.0, 0.0, 0.0)
         used = 0
         for iz in range(rows):

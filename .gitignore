@@ -95,3 +95,6 @@ vmi_mcp_server.log
 
 # Local Blender extension install sandbox (build artefact)
 .workflow/install-sandbox/
+
+# pi session-local state
+.pi/

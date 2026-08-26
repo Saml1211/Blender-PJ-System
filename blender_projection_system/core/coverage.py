@@ -26,7 +26,7 @@ from .photometry import (
     linear_ramp_weight,
     summarize_brightness,
 )
-from .surfaces import CylindricalWall
+from .surfaces import Surface
 from .vectors import Vec3, dot, normalize, sub
 
 DEFAULT_GRID_S = 80
@@ -144,7 +144,7 @@ class CoverageReport:
         return max(0.0, 1.0 - gap_total / self.wall_arc_length)
 
 
-def _cell_centers(wall: CylindricalWall, grid_s: int, grid_z: int):
+def _cell_centers(wall: Surface, grid_s: int, grid_z: int):
     if grid_s < 1 or grid_z < 1:
         raise ProjectionError("coverage grid dimensions must be at least 1")
     ds = wall.arc_length / grid_s
@@ -158,7 +158,7 @@ def _cell_centers(wall: CylindricalWall, grid_s: int, grid_z: int):
 
 def analyze_coverage(
     footprints: Sequence[Footprint],
-    wall: CylindricalWall,
+    wall: Surface,
     grid_s: int = DEFAULT_GRID_S,
     grid_z: int = DEFAULT_GRID_Z,
     screen_gain: float = 1.0,
@@ -256,7 +256,7 @@ def _cell_illuminance(fp: Footprint, point: Vec3, normal: Vec3) -> float:
 def _combined_illuminance(
     contributions: list[tuple[Footprint, float]],
     s: float,
-    wall: CylindricalWall,
+    wall: Surface,
     blend_model: BlendModel,
 ) -> float:
     """Combine per-projector illuminance for one wall cell.
@@ -337,7 +337,7 @@ def _gap_intervals(
 
 def compute_blend_zones(
     footprints: Sequence[Footprint],
-    wall: CylindricalWall | None = None,
+    wall: Surface | None = None,
     grid_s: int = DEFAULT_GRID_S,
     grid_z: int = DEFAULT_GRID_Z,
 ) -> list[BlendZone]:
@@ -347,20 +347,25 @@ def compute_blend_zones(
     so horizontally aligned but vertically disjoint images are not called a
     blend. The no-wall form remains a quick extent-only helper.
     """
-    full_circle = wall is not None and wall.sweep >= 2.0 * math.pi - 1e-9
-    if full_circle:
-        circumference = wall.arc_length
-        ordered = sorted(
-            footprints,
-            key=lambda f: ((f.s_min + f.s_max) * 0.5) % circumference,
-        )
-        pairs = list(zip(ordered, ordered[1:], strict=False))
-        if len(ordered) > 2:
-            pairs.append((ordered[-1], ordered[0]))
-    else:
-        circumference = 0.0
+    circumference = 0.0
+    if wall is None:
+        full_circle = False
         ordered = sorted(footprints, key=lambda f: (f.s_min + f.s_max) * 0.5)
         pairs = list(zip(ordered, ordered[1:], strict=False))
+    else:
+        full_circle = wall.wraps_around
+        if full_circle:
+            circumference = wall.arc_length
+            ordered = sorted(
+                footprints,
+                key=lambda f: ((f.s_min + f.s_max) * 0.5) % circumference,
+            )
+            pairs = list(zip(ordered, ordered[1:], strict=False))
+            if len(ordered) > 2:
+                pairs.append((ordered[-1], ordered[0]))
+        else:
+            ordered = sorted(footprints, key=lambda f: (f.s_min + f.s_max) * 0.5)
+            pairs = list(zip(ordered, ordered[1:], strict=False))
     zones: list[BlendZone] = []
     for a, b in pairs:
         ia = Interval(a.s_min, a.s_max)

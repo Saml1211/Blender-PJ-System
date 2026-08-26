@@ -123,17 +123,53 @@ class PJ_PG_ReportLine(PropertyGroup):
 
 
 class PJ_PG_Wall(PropertyGroup):
-    """Parameters of a cylindrical projection wall, stored on its object.
+    """Parameters of a projection wall, stored on its object.
 
     ``base_center`` is the object's own location, so moving the empty/mesh in
     the viewport moves the analysis with it. Rotation is intentionally not
-    honoured; the operator bakes the arc into the mesh at identity rotation.
+    honoured; the operators bake the wall geometry into the mesh at identity
+    rotation. ``kind`` selects which parameter set applies.
     """
 
     is_wall: BoolProperty(
         name="Is Projection Wall",
         description="Marks this object as a projection target surface",
         default=False,
+    )
+    kind: EnumProperty(
+        name="Kind",
+        description="Geometry of this projection wall",
+        items=[
+            (
+                "CYLINDER",
+                "Curved",
+                "Vertical-axis cylindrical wall segment",
+            ),
+            (
+                "FLAT",
+                "Flat",
+                "Rectangular planar wall",
+            ),
+        ],
+        default="CYLINDER",
+    )
+    width: FloatProperty(
+        name="Width",
+        description="Width of a flat wall face along its length",
+        default=4.0,
+        min=0.01,
+        soft_max=100.0,
+        unit="LENGTH",
+    )
+    yaw_deg: FloatProperty(
+        name="Facing Yaw",
+        description=(
+            "Rotation about Z for a flat wall; 0 means the face looks "
+            "toward -X, i.e. projectors sit at negative X"
+        ),
+        default=0.0,
+        min=-360.0,
+        max=360.0,
     )
     radius: FloatProperty(
         name="Radius",

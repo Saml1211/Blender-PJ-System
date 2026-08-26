@@ -62,8 +62,8 @@ def main() -> None:
     check(hasattr(bpy.types.Object, "pj_projector"), "Object.pj_projector registered")
 
     expected_ops = {
-        "create_curved_wall", "set_target_wall", "add_projector", "aim_at_wall",
-        "plan_array", "analyze", "clear_analysis", "copy_report",
+        "create_curved_wall", "create_flat_wall", "set_target_wall", "add_projector",
+        "aim_at_wall", "plan_array", "analyze", "clear_analysis", "copy_report",
     }
     actual_ops = {o for o in dir(bpy.ops.projection) if not o.startswith("_")}
     check(expected_ops <= actual_ops, f"all operators registered (missing {expected_ops - actual_ops})")
@@ -138,6 +138,65 @@ def main() -> None:
     manual_data = manual.data
     bpy.data.objects.remove(manual, do_unlink=True)
     bpy.data.cameras.remove(manual_data)
+
+    # -- 2b. a flat wall is a first-class surface --------------------------
+    print("\n[2b] create a flat wall")
+    result = bpy.ops.projection.create_flat_wall(
+        width=4.0, height=2.5, yaw_deg=0.0, segments=24
+    )
+    check(result == {"FINISHED"}, "create_flat_wall finished")
+    flat_obj = scene.pj.target_wall
+    if flat_obj is None:
+        check(False, "flat wall became the analysis target")
+        return
+    check(flat_obj.pj_wall.kind == "FLAT", "flat wall tagged kind FLAT")
+    check(len(flat_obj.data.polygons) == 24, f"flat wall mesh has 24 faces (got {len(flat_obj.data.polygons)})")
+    from blender_projection_system.core.surfaces import PlanarWall
+
+    flat_core = viz.wall_from_object(flat_obj)
+    check(isinstance(flat_core, PlanarWall), "wall_from_object rebuilds a PlanarWall")
+    check(approx(flat_core.arc_length, 4.0), f"flat wall width {flat_core.arc_length:.3f} m")
+    mid_face = flat_obj.data.polygons[len(flat_obj.data.polygons) // 2]
+    check(mid_face.normal.dot(mathutils.Vector((-1.0, 0.0, 0.0))) > 0.99, "flat wall winds toward projectors")
+    # A projector aimed from -X lands on the planar surface end to end.
+    # Mount near the image-centre height so LEVEL mode needs only modest
+    # vertical lens shift (~43%) instead of pushing the image off the wall.
+    pj = scene.pj
+    pj.throw_ratio = 1.2
+    pj.mount_mode = "LEVEL"
+    pj.mount_height = 1.6
+    pj.image_center_height = 1.25
+    scene.cursor.location = (-3.5, 0.0, 1.6)
+    check(bpy.ops.projection.add_projector() == {"FINISHED"}, "projector added against flat wall")
+    flat_projector = bpy.context.active_object
+    # add_projector aims but does not run analysis, so calc_hit_ratio is not
+    # populated yet; derive the footprint directly from the aimed object's
+    # world matrix using the same Pose convention as the analyze operator.
+    from blender_projection_system.core.footprint import compute_footprint as _cfp
+    from blender_projection_system.core.pose import Pose as _Pose
+
+    basis = flat_projector.matrix_world.to_quaternion().to_matrix()
+    col_x, col_y, col_z = basis.col[0], basis.col[1], basis.col[2]
+    origin = flat_projector.matrix_world.translation
+    pose = _Pose(
+        origin=(origin.x, origin.y, origin.z),
+        right=(col_x.x, col_x.y, col_x.z),
+        up=(col_y.x, col_y.y, col_y.z),
+        forward=(-col_z.x, -col_z.y, -col_z.z),
+    )
+    fp_flat = _cfp(pose, viz.spec_from_object(flat_projector), flat_core)
+    check(fp_flat.hit_ratio == 1.0, "image lands fully on the flat wall")
+    for o in (flat_projector,):
+        cam_data = o.data
+        bpy.data.objects.remove(o, do_unlink=True)
+        if isinstance(cam_data, bpy.types.Camera) and cam_data.users == 0:
+            bpy.data.cameras.remove(cam_data)
+
+    # Restore the curved wall so the array-planning sections run as before.
+    result = bpy.ops.projection.create_curved_wall(
+        radius=8.0, height=3.0, arc_deg=90.0, segments=48
+    )
+    check(result == {"FINISHED"}, "curved wall restored after flat-wall checks")
 
     # -- 3. plan a three-projector array -----------------------------------
     print("\n[3] plan a 3-projector ceiling array")

@@ -25,7 +25,7 @@ from .core.errors import ProjectionError
 from .core.footprint import compute_footprint
 from .core.photometry import BlendModel, brightness_warnings
 from .core.pose import level_pose, look_at
-from .core.surfaces import CylindricalWall
+from .core.surfaces import CylindricalWall, PlanarWall, Surface
 from .core.throw import ProjectorSpec, describe_throw, image_size, required_lens_shift_v
 
 # ---------------------------------------------------------------------------
@@ -59,7 +59,7 @@ def _resolve_wall(context) -> bpy.types.Object | None:
     return None
 
 
-def _wall_for_operation(obj: bpy.types.Object) -> CylindricalWall:
+def _wall_for_operation(obj: bpy.types.Object) -> Surface:
     """Synchronise an add-on wall's mesh, then return its core geometry."""
     viz.sync_generated_wall_mesh(obj)
     return viz.wall_from_object(obj)
@@ -102,7 +102,7 @@ def _projectors_in_scene(context) -> list[bpy.types.Object]:
     return [
         obj
         for obj in context.scene.objects
-        if obj.pj_projector.is_projector and obj.visible_get() is not False
+        if obj.pj_projector.is_projector and obj.visible_get()
     ]
 
 
@@ -184,6 +184,82 @@ class PJ_OT_create_curved_wall(Operator):
             {"INFO"},
             f"Created {wall.arc_length:.2f} m x {self.height:.2f} m curved wall "
             f"(R={self.radius:.2f} m, {self.arc_deg:.0f} deg)",
+        )
+        return {"FINISHED"}
+
+
+class PJ_OT_create_flat_wall(Operator):
+    """Create a flat projection wall and set it as the analysis target"""
+
+    bl_idname = "projection.create_flat_wall"
+    bl_label = "Create Flat Wall"
+    bl_options = {"REGISTER", "UNDO"}
+
+    width: FloatProperty(
+        name="Width", default=4.0, min=0.05, soft_max=100.0, unit="LENGTH",
+        description="Length of the wall face",
+    )
+    height: FloatProperty(
+        name="Height", default=3.0, min=0.05, soft_max=30.0, unit="LENGTH"
+    )
+    yaw_deg: FloatProperty(
+        name="Facing Yaw", default=0.0, min=-180.0, max=180.0,
+        description=(
+            "Rotation of the wall about Z; 0 means the face looks toward -X, "
+            "so projectors sit at negative X"
+        ),
+    )
+    segments: IntProperty(name="Segments", default=24, min=2, max=512)
+    base_height: FloatProperty(
+        name="Base Height", default=0.0, soft_min=-10.0, soft_max=10.0, unit="LENGTH",
+        description="Height of the bottom edge of the wall",
+    )
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self, width=360)
+
+    def execute(self, context):
+        try:
+            yaw = math.radians(self.yaw_deg)
+            wall = PlanarWall(
+                base_center=(0.0, 0.0, self.base_height),
+                width=self.width,
+                height=self.height,
+                facing=(-math.cos(yaw), -math.sin(yaw), 0.0),
+                name="PJ_FlatWall",
+            )
+        except ProjectionError as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+
+        mesh = viz.build_wall_mesh(wall, self.segments)
+        obj = bpy.data.objects.new("PJ_FlatWall", mesh)
+        obj[viz.OWNER_KEY] = viz.OWNER_ID
+        obj["pj_generated_wall"] = True
+        obj.location = (0.0, 0.0, self.base_height)
+
+        props = obj.pj_wall
+        props.is_wall = True
+        props.kind = "FLAT"
+        props.width = self.width
+        props.height = self.height
+        props.yaw_deg = self.yaw_deg
+        props.segments = self.segments
+
+        viz.link_only_to(obj, viz.get_collection(context, viz.COLLECTION_TARGETS))
+        context.scene.pj.target_wall = obj
+
+        bpy.ops.object.select_all(action="DESELECT")
+        obj.select_set(True)
+        context.view_layer.objects.active = obj
+
+        facing_note = (
+            "toward -X" if abs(self.yaw_deg) < 1e-9 else f"at {self.yaw_deg:.0f} deg yaw"
+        )
+        self.report(
+            {"INFO"},
+            f"Created {wall.arc_length:.2f} m x {self.height:.2f} m flat wall "
+            f"facing {facing_note}",
         )
         return {"FINISHED"}
 
@@ -624,6 +700,7 @@ class PJ_OT_copy_report(Operator):
 
 _CLASSES = (
     PJ_OT_create_curved_wall,
+    PJ_OT_create_flat_wall,
     PJ_OT_set_target_wall,
     PJ_OT_add_projector,
     PJ_OT_aim_at_wall,

@@ -40,6 +40,7 @@ class PJ_PT_target(_Base):
 
         col = layout.column(align=True)
         col.operator("projection.create_curved_wall", icon="MESH_CYLINDER")
+        col.operator("projection.create_flat_wall", icon="MESH_PLANE")
         col.operator("projection.set_target_wall", icon="EYEDROPPER")
 
         layout.prop(pj, "target_wall")
@@ -53,14 +54,18 @@ class PJ_PT_target(_Base):
 
         props = wall_obj.pj_wall
         box = layout.box()
-        box.label(text=wall_obj.name, icon="MESH_CYLINDER")
+        box.label(text=wall_obj.name, icon="MESH_PLANE" if props.kind == "FLAT" else "MESH_CYLINDER")
         col = box.column(align=True)
-        col.prop(props, "radius")
+        if props.kind == "FLAT":
+            col.prop(props, "width")
+            col.prop(props, "yaw_deg")
+        else:
+            col.prop(props, "radius")
+            row = col.row(align=True)
+            row.prop(props, "arc_start_deg", text="Arc Start")
+            row.prop(props, "arc_end_deg", text="End")
+            col.prop(props, "concave")
         col.prop(props, "height")
-        row = col.row(align=True)
-        row.prop(props, "arc_start_deg", text="Arc Start")
-        row.prop(props, "arc_end_deg", text="End")
-        col.prop(props, "concave")
 
         try:
             arc_length = viz.wall_from_object(wall_obj).arc_length

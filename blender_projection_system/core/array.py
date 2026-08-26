@@ -28,7 +28,7 @@ from dataclasses import dataclass, field, replace
 from .errors import ProjectionError, require_finite, require_positive
 from .footprint import DEFAULT_SAMPLES, Footprint, compute_footprint
 from .pose import Pose, level_pose, look_at
-from .surfaces import CylindricalWall
+from .surfaces import Surface
 from .throw import ProjectorSpec, image_size, required_lens_shift_v
 from .vectors import Vec3, add, scale
 
@@ -75,7 +75,7 @@ class ProjectorPlacement:
 
 @dataclass
 class ArrayPlan:
-    wall: CylindricalWall
+    wall: Surface
     placements: list[ProjectorPlacement]
     target_arc_width: float
     overlap_fraction: float
@@ -122,33 +122,8 @@ def arc_centers(
     return [width * 0.5 + i * step for i in range(count)]
 
 
-def _measurement_wall(wall: CylindricalWall) -> CylindricalWall:
-    """A deliberately oversized copy of the wall, used only while solving.
-
-    Edge projectors aim at the very end of the arc, so their image would be
-    clipped by the real wall bounds and the measured span would be wrong. The
-    solve runs against this extended surface and the final footprint is then
-    evaluated against the real wall.
-    """
-    pad_angle = min(math.pi * 0.5, wall.sweep * 0.75 + 0.35)
-    start = wall.angle_start - pad_angle
-    end = wall.angle_end + pad_angle
-    if end - start > 2.0 * math.pi:
-        mid = 0.5 * (wall.angle_start + wall.angle_end)
-        start, end = mid - math.pi + 1e-6, mid + math.pi - 1e-6
-    pad_h = wall.height * 2.0
-    return replace(
-        wall,
-        base_center=(wall.base_center[0], wall.base_center[1], wall.base_center[2] - pad_h),
-        height=wall.height + 2.0 * pad_h,
-        angle_start=start,
-        angle_end=end,
-        name=wall.name + "(solve)",
-    )
-
-
 def _build_pose_and_spec(
-    wall: CylindricalWall,
+    wall: Surface,
     base_spec: ProjectorSpec,
     arc_center: float,
     target_z: float,
@@ -189,7 +164,7 @@ def _build_pose_and_spec(
 
 
 def solve_standoff(
-    wall: CylindricalWall,
+    wall: Surface,
     base_spec: ProjectorSpec,
     arc_center: float,
     target_z: float,
@@ -214,7 +189,7 @@ def solve_standoff(
             "automatic array planning does not support horizontal lens shift; "
             "set it to zero and place the image centres along the wall arc"
         )
-    solve_wall = _measurement_wall(wall)
+    solve_wall = wall.measurement_wall()
 
     # In TILT mode the optical axis is the hypotenuse over the vertical drop,
     # so no candidate distance shorter than that drop is geometrically valid.
@@ -223,9 +198,8 @@ def solve_standoff(
     drop = abs(mount_height - wall.point_at(arc_center, target_z)[2])
     floor = max(0.05, drop * 1.000001 + 1e-6) if mode == MODE_TILT else 0.05
 
-    # Seed from the chord that subtends the target arc, treated as a flat image.
-    chord = 2.0 * wall.radius * math.sin(min(math.pi, target_arc_width / (2.0 * wall.radius)))
-    distance = max(floor, chord * base_spec.throw_ratio)
+    # Seed from the chord that subtends the target span, treated as a flat image.
+    distance = max(floor, wall.chord(target_arc_width) * base_spec.throw_ratio)
 
     best: tuple[float, float, Pose, ProjectorSpec, float] | None = None
     for _ in range(SOLVE_MAX_ITERATIONS):
@@ -261,7 +235,7 @@ def solve_standoff(
 
 
 def plan_projector(
-    wall: CylindricalWall,
+    wall: Surface,
     base_spec: ProjectorSpec,
     arc_center: float,
     target_arc_width: float,
@@ -342,7 +316,7 @@ def plan_projector(
 
 def _placement_warnings(
     placement: ProjectorPlacement,
-    wall: CylindricalWall,
+    wall: Surface,
     target_arc_width: float,
 ) -> list[str]:
     out: list[str] = []
@@ -359,11 +333,15 @@ def _placement_warnings(
             f"{placement.name}: tilted {placement.tilt_deg:.1f} deg off horizontal; "
             "keystone correction will crop the image and soften focus"
         )
-    if placement.horizontal_standoff >= wall.radius:
+    curvature_radius = wall.curvature_radius
+    if (
+        curvature_radius is not None
+        and placement.horizontal_standoff >= curvature_radius
+    ):
         out.append(
             f"{placement.name}: the lens sits {placement.horizontal_standoff:.2f} m from the "
-            f"wall but the wall radius is only {wall.radius:.2f} m, so the projector would "
-            "pass through the cylinder axis. Use a shorter lens (lower throw ratio)."
+            f"wall but its radius of curvature is only {curvature_radius:.2f} m, so the projector "
+            "would pass through the centre of curvature. Use a shorter lens (lower throw ratio)."
         )
     if placement.position[2] <= wall.base_center[2]:
         out.append(
@@ -387,7 +365,7 @@ def _placement_warnings(
 
 
 def plan_array(
-    wall: CylindricalWall,
+    wall: Surface,
     base_spec: ProjectorSpec,
     count: int,
     overlap_fraction: float = 0.15,

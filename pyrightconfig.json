@@ -1,0 +1,11 @@
+{
+    // This repo targets the Blender 4.2 Python interpreter, so `bpy` cannot
+    // resolve when type-checking runs under plain CPython, and every
+    // PropertyGroup field uses the canonical `field: EnumProperty(...)`
+    // annotation form that pyright's reportInvalidTypeForm flags. Both are
+    // expected here, not errors. House verification stays at
+    // ruff + compileall + pytest + headless-Blender smoke.
+    "include": ["blender_projection_system", "tests"],
+    "reportMissingImports": "none",
+    "reportInvalidTypeForm": "none"
+}

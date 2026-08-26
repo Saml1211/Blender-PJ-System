@@ -50,8 +50,8 @@ surface normal and incidence angle. Vertical rays, rays that miss, and rays
 that only hit behind the origin all return `None`.
 
 **Limits:**
-- Cylinders only. Flat walls are approximated with a large radius
-  (`flat_wall_as_cylinder`); domes and arbitrary meshes are unsupported.
+- Cylinders and planes only. Flat walls are a first-class `PlanarWall` surface
+  (`projection.create_flat_wall`); domes and arbitrary meshes are unsupported.
 - Rotated walls and walls with unapplied object scale are rejected. Translation
   is supported; the surface remains a vertical circular cylinder.
 - No occlusion. If a column stands between projector and wall, this add-on

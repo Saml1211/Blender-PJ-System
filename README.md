@@ -30,6 +30,7 @@ This is **v0.3**. The table below is the whole truth about what works.
 | Throw geometry | Analytic `TR = D/W`, image size, aspect, and field of view. |
 | Lens shift | Vertical and horizontal, with an explicit convention and a datasheet-percentage converter. Limits are checked and warned about. |
 | Curved-wall surfaces | Vertical-axis cylindrical wall segments; exact ray/cylinder intersection with arc and height bounds. |
+| Flat-wall surfaces | True planar walls (`projection.create_flat_wall`) — exact ray/plane intersection, no large-radius approximation. Same `(s, z)` parameterisation as curved walls. |
 | Image footprints | The frustum is ray-cast onto the wall on an N×N grid. Reports arc span, height, throw spread, incidence angles, and spill. |
 | Projector aiming | Aim-at-target, plus a level (lens-shift) and a tilt mounting mode. |
 | Array planning | Lay *N* projectors across a wall at a requested overlap. Solves numerically for the standoff distance that produces the required arc width. |
@@ -43,9 +44,7 @@ plus a headless Blender smoke workflow. Both run in CI.
 
 ### Experimental / limited
 
-- **Only cylindrical walls.** Flat walls work by using a large radius (there is
-  a helper for this). Spheres, domes, and arbitrary meshes are not supported —
-  the add-on does not ray-cast against imported geometry.
+- **Walls are cylindrical or planar.** Both are first-class and exact; spheres, domes, and arbitrary meshes are not supported — the add-on does not ray-cast against imported geometry.
 - **Brightness is an estimate, not a photometric simulation.** Every report
   states its assumptions; they are also in `core/photometry.py`. In short:
   uniform intensity across the frustum, full rated lumens, a Lambertian screen,
@@ -268,7 +267,7 @@ failure, so CI can rely on it.
 blender_projection_system/
 ├── core/                 # Pure Python. Never imports bpy. All the maths.
 │   ├── throw.py          #   throw ratio, image size, lens shift, frustum rays
-│   ├── surfaces.py       #   cylindrical walls, ray intersection
+│   ├── surfaces.py       #   cylindrical & planar walls, ray intersection
 │   ├── pose.py           #   projector placement and orientation
 │   ├── footprint.py      #   frustum -> surface sampling, back-projection
 │   ├── coverage.py       #   gaps, blend zones, illuminance grid

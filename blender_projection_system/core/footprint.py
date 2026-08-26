@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from .errors import ProjectionError
 from .photometry import BrightnessReport, illuminance_at, summarize_brightness
 from .pose import Pose
-from .surfaces import CylindricalWall, SurfaceHit
+from .surfaces import Surface, SurfaceHit
 from .throw import ProjectorSpec, grid_boundary_indices, grid_uv, ray_direction_local
 from .vectors import Vec3, dot, normalize, sub
 from .vectors import distance as vec_distance
@@ -44,7 +44,7 @@ class Footprint:
     grid: int
     spec: ProjectorSpec
     pose: Pose
-    wall: CylindricalWall
+    wall: Surface
 
     # Derived, filled by :func:`compute_footprint`.
     hit_ratio: float = 0.0
@@ -138,7 +138,7 @@ class Footprint:
 def compute_footprint(
     pose: Pose,
     spec: ProjectorSpec,
-    wall: CylindricalWall,
+    wall: Surface,
     samples: int = DEFAULT_SAMPLES,
     name: str = "Projector",
     max_distance: float = 1e6,
@@ -213,7 +213,7 @@ def compute_footprint(
 def _center_hit(fp: Footprint) -> SurfaceHit | None:
     """Sample nearest the image centre, used to find the image-plane depth."""
     best: FootprintSample | None = None
-    best_r2 = float("inf")
+    best_r2 = math.inf
     for s in fp.samples:
         if s.hit is None:
             continue
@@ -223,9 +223,9 @@ def _center_hit(fp: Footprint) -> SurfaceHit | None:
     return best.hit if best else None
 
 
-def _minimal_arc_values(values: Sequence[float], wall: CylindricalWall) -> list[float]:
+def _minimal_arc_values(values: Sequence[float], wall: Surface) -> list[float]:
     """Unwrap full-circle coordinates across the seam to their shortest span."""
-    if len(values) < 2 or wall.sweep < 2.0 * math.pi - 1e-9:
+    if len(values) < 2 or not wall.wraps_around:
         return list(values)
     circumference = wall.arc_length
     ordered = sorted(value % circumference for value in values)
@@ -254,7 +254,7 @@ def _boundary(fp: Footprint) -> tuple[list[tuple[float, float]], list[Vec3]]:
         if hit is None:
             continue
         s = hit.s
-        if fp.wall.sweep >= 2.0 * math.pi - 1e-9 and fp.arc_span < fp.wall.arc_length:
+        if fp.wall.wraps_around and fp.arc_span < fp.wall.arc_length:
             midpoint = 0.5 * (fp.s_min + fp.s_max)
             s += round((midpoint - s) / fp.wall.arc_length) * fp.wall.arc_length
         poly.append((s, hit.z))
@@ -316,7 +316,7 @@ def frustum_edge_lines(fp: Footprint) -> list[tuple[Vec3, Vec3]]:
     return [(fp.pose.origin, c) for c in footprint_corners_world(fp)]
 
 
-def throw_distance_to_wall(pose: Pose, spec: ProjectorSpec, wall: CylindricalWall) -> float | None:
+def throw_distance_to_wall(pose: Pose, spec: ProjectorSpec, wall: Surface) -> float | None:
     """Optical depth to the image-centre hit, or ``None`` if it misses.
 
     With lens shift the centre ray is not the optical axis. Throw ratio still

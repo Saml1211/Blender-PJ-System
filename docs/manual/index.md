@@ -26,7 +26,7 @@ running it.
 
 | Option | Meaning |
 |---|---|
-| **Radius** | Radius of curvature. Larger is flatter — use several thousand metres for an effectively flat wall |
+| **Radius** | Radius of curvature. Larger is flatter — for a genuinely flat wall use *Create Flat Wall* instead |
 | **Height** | Height of the wall surface |
 | **Arc** | Angular sweep in degrees, centred on the +X axis |
 | **Segments** | Mesh subdivisions around the arc. Visual only; analysis is analytic |
@@ -36,6 +36,24 @@ running it.
 Once created, the panel shows the wall's arc length and area, and the radius,
 height and arc remain editable. **Edits take effect on the next Calculate
 Coverage** — the analysis is not live.
+
+### Create Flat Wall options
+
+For genuinely flat walls — the common case — use **Create Flat Wall** instead
+of approximating with a huge radius. The face is a true plane, so footprint and
+incidence numbers carry no curvature error.
+
+| Option | Meaning |
+|---|---|
+| **Width** | Length of the wall face |
+| **Height** | Height of the wall surface |
+| **Facing Yaw** | Rotation about Z; 0 means the face looks toward −X, so projectors sit at negative X |
+| **Segments** | Mesh subdivisions across the width. Visual only; analysis is analytic |
+| **Base Height** | Height of the wall's bottom edge |
+
+The wall's position comes from its object location; `s` runs from 0 at one edge
+to *width* at the other, exactly like arc length on a curved wall, so coverage,
+blend zones and array planning work unchanged.
 
 > The wall's **position** comes from its object location, so you can move it in
 > the viewport. Rotated walls and walls with unapplied scale or shear are

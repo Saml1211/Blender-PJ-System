@@ -21,7 +21,7 @@ from mathutils import Matrix, Vector
 from .core.array import ProjectorPlacement
 from .core.errors import ProjectionError
 from .core.footprint import Footprint, footprint_corners_world
-from .core.surfaces import CylindricalWall
+from .core.surfaces import CylindricalWall, PlanarWall, Surface
 from .core.vectors import length as vec_length
 from .core.vectors import sub as sub_vec
 
@@ -158,7 +158,7 @@ def get_overlay_material(index: int) -> bpy.types.Material:
 # ---------------------------------------------------------------------------
 
 
-def wall_from_object(obj: bpy.types.Object) -> CylindricalWall:
+def wall_from_object(obj: bpy.types.Object) -> Surface:
     """Rebuild the pure-math wall description from a tagged Blender object."""
     world_basis = obj.matrix_world.to_3x3()
     if any(
@@ -172,6 +172,15 @@ def wall_from_object(obj: bpy.types.Object) -> CylindricalWall:
         )
     props = obj.pj_wall
     loc = obj.matrix_world.translation
+    if getattr(props, "kind", "CYLINDER") == "FLAT":
+        yaw = math.radians(props.yaw_deg)
+        return PlanarWall(
+            base_center=(loc.x, loc.y, loc.z),
+            width=props.width,
+            height=props.height,
+            facing=(-math.cos(yaw), -math.sin(yaw), 0.0),
+            name=obj.name,
+        )
     return CylindricalWall(
         base_center=(loc.x, loc.y, loc.z),
         radius=props.radius,
@@ -195,7 +204,7 @@ def sync_generated_wall_mesh(obj: bpy.types.Object) -> bool:
     return True
 
 
-def build_wall_mesh(wall: CylindricalWall, segments: int) -> bpy.types.Mesh:
+def build_wall_mesh(wall: Surface, segments: int) -> bpy.types.Mesh:
     """A quad strip following the arc, with vertices local to the base centre."""
     mesh = bpy.data.meshes.new(f"{wall.name}_mesh")
     verts: list[tuple[float, float, float]] = []
@@ -213,8 +222,8 @@ def build_wall_mesh(wall: CylindricalWall, segments: int) -> bpy.types.Mesh:
     for i in range(segments):
         a, b = 2 * i, 2 * i + 1
         c, d = 2 * (i + 1), 2 * (i + 1) + 1
-        # Wind so the face normal points at the projectors on a concave wall.
-        faces.append((a, b, d, c) if wall.concave else (a, c, d, b))
+        # Wind so the face normal points at the projectors.
+        faces.append((a, b, d, c) if wall.normal_faces_projectors else (a, c, d, b))
 
     mesh.from_pydata(verts, [], faces)
     mesh.update()
@@ -339,7 +348,7 @@ def store_footprint_results(obj: bpy.types.Object, footprint: Footprint, gain: f
 # ---------------------------------------------------------------------------
 
 
-def _offset_from_wall(point, wall: CylindricalWall, s: float):
+def _offset_from_wall(point, wall: Surface, s: float):
     """Nudge a surface point off the wall along its normal to avoid z-fighting."""
     n = wall.normal_at_s(s)
     return (
@@ -352,7 +361,7 @@ def _offset_from_wall(point, wall: CylindricalWall, s: float):
 def build_footprint_object(
     context,
     footprint: Footprint,
-    wall: CylindricalWall,
+    wall: Surface,
     index: int,
 ) -> bpy.types.Object | None:
     """A filled quad grid of where one projector's image lands on the wall.
@@ -365,7 +374,9 @@ def build_footprint_object(
     """
     n = footprint.grid
     hits = [s.hit for s in footprint.samples]
-    if sum(h is not None for h in hits) < 4:
+    # hits holds only SurfaceHit objects and None, so counting Nones gives the
+    # miss count without an identity comparison.
+    if len(hits) - hits.count(None) < 4:
         return None
 
     # One vertex per sampled hit; missed samples get no vertex and any quad
@@ -388,7 +399,8 @@ def build_footprint_object(
                 (row + 1) * n + col,
             )
             if all(c in index_of for c in corners):
-                faces.append(tuple(index_of[c] for c in corners))
+                i0, i1, i2, i3 = (index_of[c] for c in corners)
+                faces.append((i0, i1, i2, i3))
 
     if not faces:
         return None
@@ -455,7 +467,7 @@ def build_frustum_object(
 
 
 def _band_geometry(
-    wall: CylindricalWall,
+    wall: Surface,
     spans: Iterable[tuple[float, float, float, float]],
     offset_scale: float = 1.0,
     max_segment: float = 0.25,
@@ -471,7 +483,7 @@ def _band_geometry(
         width = end - start
         if width <= 0.0 or z_end <= z_start:
             continue
-        steps = min(MAX_BAND_SEGMENTS, max(1, int(math.ceil(width / max_segment))))
+        steps = min(MAX_BAND_SEGMENTS, max(1, math.ceil(width / max_segment)))
         base = len(verts)
         for i in range(steps + 1):
             s = start + width * i / steps
@@ -493,7 +505,7 @@ def _band_geometry(
 
 def build_gap_object(
     context,
-    wall: CylindricalWall,
+    wall: Surface,
     gaps: Iterable,
 ) -> bpy.types.Object | None:
     """One band per uncovered arc range, so dark zones are obvious."""
@@ -521,7 +533,7 @@ def build_gap_object(
 
 def build_blend_object(
     context,
-    wall: CylindricalWall,
+    wall: Surface,
     blend_zones: Iterable,
 ) -> bpy.types.Object | None:
     """A band per blend zone, offset slightly further out than the footprints."""

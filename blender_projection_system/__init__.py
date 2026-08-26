@@ -37,7 +37,7 @@ if bpy is not None:  # pragma: no cover - requires Blender
     _MODULES = (properties, operators, ui)
     _REGISTERED = False
 
-    def register():
+    def register():  # pyright: ignore[reportRedeclaration] - one def per bpy branch
         global _REGISTERED
         if _REGISTERED:
             return
@@ -57,7 +57,7 @@ if bpy is not None:  # pragma: no cover - requires Blender
             raise
         _REGISTERED = True
 
-    def unregister():
+    def unregister():  # pyright: ignore[reportRedeclaration] - one def per bpy branch
         global _REGISTERED
         if not _REGISTERED:
             return

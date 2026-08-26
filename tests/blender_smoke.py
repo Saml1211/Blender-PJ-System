@@ -206,6 +206,81 @@ def main() -> None:
         if isinstance(cam_data, bpy.types.Camera) and cam_data.users == 0:
             bpy.data.cameras.remove(cam_data)
 
+    # -- 2c. an imported mesh becomes a MESH-kind target --------------------
+    print("\n[2c] an arbitrary mesh can be set as the target")
+    # Remove the [2b] flat wall so the mesh takes over its position: at
+    # x=0 the 3.5 m throw keeps the whole 16:9 image on a 2.5 m wall
+    # (the same physics that let [2b] pass).
+    for old_obj in list(bpy.data.objects):
+        if old_obj.get("pj_generated_wall"):
+            old_mesh = old_obj.data
+            bpy.data.objects.remove(old_obj, do_unlink=True)
+            if isinstance(old_mesh, bpy.types.Mesh) and old_mesh.users == 0:
+                bpy.data.meshes.remove(old_mesh)
+    ys = (-2.0, 0.0, 2.0)
+    zs = (0.0, 1.25, 2.5)
+    verts = [(0.0, y, z) for z in zs for y in ys]
+    faces = []
+    stride = len(ys)
+    for iz in range(len(zs) - 1):
+        for iy in range(len(ys) - 1):
+            a = iz * stride + iy
+            # Wound CCW seen from -X so face normals point at projectors.
+            faces.append((a, a + stride, a + stride + 1, a + 1))
+    mesh_data = bpy.data.meshes.new("ImportedWall")
+    mesh_data.from_pydata(verts, [], faces)
+    mesh_obj = bpy.data.objects.new("ImportedWall", mesh_data)
+    scene.collection.objects.link(mesh_obj)
+    mesh_obj.location = (0.0, 0.0, 0.0)
+    bpy.context.view_layer.update()
+
+    bpy.ops.object.select_all(action="DESELECT")
+    mesh_obj.select_set(True)
+    bpy.context.view_layer.objects.active = mesh_obj
+    check(
+        bpy.ops.projection.set_target_wall() == {"FINISHED"},
+        "imported mesh accepted by set_target_wall",
+    )
+    check(scene.pj.target_wall is mesh_obj, "mesh became the analysis target")
+    check(
+        mesh_obj.pj_wall.kind == "MESH",
+        "untagged mesh auto-tagged kind MESH",
+    )
+    from blender_projection_system.core.mesh_surface import MeshSurface as _MeshSurface
+
+    core_mesh = viz.wall_from_object(mesh_obj)
+    check(isinstance(core_mesh, _MeshSurface), "wall_from_object rebuilds a MeshSurface")
+    check(approx(core_mesh.arc_length, 4.0), f"mesh width {core_mesh.arc_length:.3f} m")
+    check(approx(core_mesh.height, 2.5), f"mesh height {core_mesh.height:.3f} m")
+
+    pj.throw_ratio = 1.2
+    pj.mount_mode = "LEVEL"
+    pj.mount_height = 1.6
+    pj.image_center_height = 1.25
+    scene.cursor.location = (-3.5, 0.0, 1.6)
+    check(bpy.ops.projection.add_projector() == {"FINISHED"}, "projector added against mesh")
+    mesh_projector = bpy.context.active_object
+    basis = mesh_projector.matrix_world.to_quaternion().to_matrix()
+    col_x, col_y, col_z = basis.col[0], basis.col[1], basis.col[2]
+    origin = mesh_projector.matrix_world.translation
+    pose = _Pose(
+        origin=(origin.x, origin.y, origin.z),
+        right=(col_x.x, col_x.y, col_x.z),
+        up=(col_y.x, col_y.y, col_y.z),
+        forward=(-col_z.x, -col_z.y, -col_z.z),
+    )
+    fp_mesh = _cfp(pose, viz.spec_from_object(mesh_projector), core_mesh)
+    check(fp_mesh.hit_ratio == 1.0, "image lands fully on the imported mesh")
+
+    cam_data = mesh_projector.data
+    bpy.data.objects.remove(mesh_projector, do_unlink=True)
+    if isinstance(cam_data, bpy.types.Camera) and cam_data.users == 0:
+        bpy.data.cameras.remove(cam_data)
+    bpy.data.objects.remove(mesh_obj, do_unlink=True)
+    if mesh_data.users == 0:
+        bpy.data.meshes.remove(mesh_data)
+    scene.pj.target_wall = None
+
     # Restore the curved wall so the array-planning sections run as before.
     result = bpy.ops.projection.create_curved_wall(
         radius=8.0, height=3.0, arc_deg=90.0, segments=48

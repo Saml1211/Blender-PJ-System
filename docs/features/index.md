@@ -51,10 +51,12 @@ that only hit behind the origin all return `None`.
 
 **Limits:**
 
-- Cylinders and planes only. Flat walls are a first-class `PlanarWall` surface
-  (`projection.create_flat_wall`); domes and arbitrary meshes are unsupported.
+- Cylinders, planes, and mostly-frontal imported meshes. Mesh targets (`Set as
+  Target Wall` on any mesh object, `core/mesh_surface.py`) are ray-cast via a
+  BVH against a frontal heightfield; folds, overhangs, domes, and columns are
+  rejected loudly with the offending region named (ADR 0004).
 - Rotated walls and walls with unapplied object scale are rejected. Translation
-  is supported; the surface remains a vertical circular cylinder.
+  is supported. Imported-mesh targets ignore modifier stacks.
 - No occlusion. If a column stands between projector and wall, this add-on
   does not know.
 

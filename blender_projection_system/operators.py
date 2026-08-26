@@ -292,12 +292,17 @@ class PJ_OT_set_target_wall(Operator):
     def execute(self, context):
         obj = context.active_object
         if not obj.pj_wall.is_wall:
-            self.report(
-                {"ERROR"},
-                f"'{obj.name}' is not a projection wall. Use Create Curved Wall, or set "
-                "its Is Projection Wall flag and fill in radius, height and arc.",
-            )
-            return {"CANCELLED"}
+            if obj.type != "MESH":
+                self.report(
+                    {"ERROR"},
+                    f"'{obj.name}' is not a projection wall. Use Create Curved Wall, "
+                    "Create Flat Wall, or select an imported mesh object.",
+                )
+                return {"CANCELLED"}
+            # An imported mesh becomes a MESH-kind target as-is; folds,
+            # overhangs and domes are rejected loudly at analysis time.
+            obj.pj_wall.is_wall = True
+            obj.pj_wall.kind = "MESH"
         context.scene.pj.target_wall = obj
         self.report({"INFO"}, f"Target wall set to '{obj.name}'")
         return {"FINISHED"}

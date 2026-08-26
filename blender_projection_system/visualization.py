@@ -17,10 +17,12 @@ from collections.abc import Iterable, Sequence
 
 import bpy
 from mathutils import Matrix, Vector
+from mathutils.bvhtree import BVHTree
 
 from .core.array import ProjectorPlacement
 from .core.errors import ProjectionError
 from .core.footprint import Footprint, footprint_corners_world
+from .core.mesh_surface import MeshHit, MeshRayCast, MeshSurface
 from .core.surfaces import CylindricalWall, PlanarWall, Surface
 from .core.vectors import length as vec_length
 from .core.vectors import sub as sub_vec
@@ -159,6 +161,63 @@ def get_overlay_material(index: int) -> bpy.types.Material:
 # ---------------------------------------------------------------------------
 
 
+#: Cap on triangles fed to the BVH so a monster import fails loudly
+#: instead of stalling the analysis silently.
+MAX_MESH_TRIS = 500_000
+
+
+def _bvh_caster(bvh: BVHTree) -> MeshRayCast:
+    """Wrap ``BVHTree.ray_cast`` into the core :class:`MeshRayCast` shape."""
+
+    def cast(origin, direction, max_distance):
+        hit = bvh.ray_cast(Vector(origin), Vector(direction), max_distance)
+        if hit[0] is None:
+            return None
+        location, normal, _index, distance = hit
+        return MeshHit(
+            point=(location.x, location.y, location.z),
+            distance=distance,
+            face_normal=(normal.x, normal.y, normal.z),
+        )
+
+    return cast
+
+
+def _mesh_wall_from_object(obj: bpy.types.Object) -> MeshSurface:
+    """Rebuild an imported-mesh target, injecting its BVH as the caster.
+
+    Uses ``obj.data`` directly: modifiers are not applied, matching the
+    "the mesh you see is the surface you get" expectation for imports.
+    """
+    mesh = obj.data
+    if len(mesh.polygons) == 0:
+        raise ProjectionError(f"'{obj.name}' has no faces; nothing to project onto")
+    mesh.calc_loop_triangles()
+    tris = [tuple(lt.vertices) for lt in mesh.loop_triangles]
+    if not tris:
+        raise ProjectionError(
+            f"'{obj.name}' could not be triangulated for ray casting"
+        )
+    if len(tris) > MAX_MESH_TRIS:
+        raise ProjectionError(
+            f"'{obj.name}' has {len(tris)} triangles (limit {MAX_MESH_TRIS}); "
+            "decimate the mesh before using it as a projection target"
+        )
+
+    translation = obj.matrix_world.translation
+    world_vertices = [
+        (v.co.x + translation.x, v.co.y + translation.y, v.co.z + translation.z)
+        for v in mesh.vertices
+    ]
+    bvh = BVHTree.FromPolygons(world_vertices, tris, all_triangles=True)
+    return MeshSurface.from_triangles(
+        world_vertices,
+        tris,
+        caster=_bvh_caster(bvh),
+        name=obj.name,
+    )
+
+
 def wall_from_object(obj: bpy.types.Object) -> Surface:
     """Rebuild the pure-math wall description from a tagged Blender object."""
     world_basis = obj.matrix_world.to_3x3()
@@ -182,6 +241,8 @@ def wall_from_object(obj: bpy.types.Object) -> Surface:
             facing=(-math.cos(yaw), -math.sin(yaw), 0.0),
             name=obj.name,
         )
+    if getattr(props, "kind", "CYLINDER") == "MESH":
+        return _mesh_wall_from_object(obj)
     return CylindricalWall(
         base_center=(loc.x, loc.y, loc.z),
         radius=props.radius,

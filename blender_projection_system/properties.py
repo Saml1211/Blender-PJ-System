@@ -150,6 +150,12 @@ class PJ_PG_Wall(PropertyGroup):
                 "Flat",
                 "Rectangular planar wall",
             ),
+            (
+                "MESH",
+                "Mesh",
+                "Imported mesh used as-is; must be mostly frontal to the "
+                "projectors (folds, overhangs and domes are rejected)",
+            ),
         ],
         default="CYLINDER",
     )

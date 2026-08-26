@@ -52,15 +52,17 @@ ln -s "$PWD/blender_projection_system" ~/.config/blender/4.2/scripts/addons/
 Enabling and disabling repeatedly is safe — this is covered by the headless
 smoke test, which cycles registration four times.
 
-## Your first design in four clicks
+## Your first live design
 
 1. **Create Curved Wall** — accept the defaults (8 m radius, 3 m high, 90°).
 2. Set **Projectors** to `3` and **Overlap** to `0.15`.
-3. **Plan Projector Array**.
-4. **Calculate Coverage**.
 
-Read panel **4. Report**. You now have mount coordinates, throw distances,
-image sizes, blend widths and a brightness estimate.
+The Geometry Nodes wall, projector cameras, coverage overlays, calculated
+fields, and report now update automatically after a short idle debounce. Read
+panel **4. Report** for mount coordinates, throw distances, image sizes, blend
+widths, and a brightness estimate. **Refresh Projector Array** and **Refresh
+Coverage** remain available if you need to force either shared calculation
+immediately.
 
 The [README](../../README.md) walks the same example with every number spelled
 out, including the lens-shift warning it deliberately triggers and how to
@@ -69,10 +71,10 @@ resolve it.
 ## Interface at a glance
 
 | Panel | Use it to |
-|---|---|
+| --- | --- |
 | **1. Projection Target** | Create or choose the wall |
-| **2. Projectors** | Set the lens, the mount, and lay out the array |
-| **3. Analysis** | Run the calculation and tune its resolution |
+| **2. Projectors** | Set the lens and mount; watch the live array update |
+| **3. Analysis** | Tune the live coverage resolution and overlays |
 | **4. Report** | Read the results and copy them out |
 | **Lens Calculator** | Quick throw sums, independent of the scene |
 

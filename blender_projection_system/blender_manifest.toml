@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "projection_planner"
-version = "0.4.0"
+version = "0.5.0"
 name = "Projection Planner"
 tagline = "Plan projector arrays against curved and flat walls"
 maintainer = "Sam Lyndon"

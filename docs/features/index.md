@@ -56,7 +56,8 @@ that only hit behind the origin all return `None`.
   BVH against a frontal heightfield; folds, overhangs, domes, and columns are
   rejected loudly with the offending region named (ADR 0004).
 - Rotated walls and walls with unapplied object scale are rejected. Translation
-  is supported. Imported-mesh targets ignore modifier stacks.
+  is supported. Imported-mesh targets use their depsgraph-evaluated geometry,
+  including modifier stacks.
 - No occlusion. If a column stands between projector and wall, this add-on
   does not know.
 
@@ -115,6 +116,22 @@ against a clipped image.
 If the request cannot be met — for example a lens too long to reach the
 required image size from the given ceiling height — it raises with a message
 naming the constraint, rather than returning a number that ignores the request.
+
+---
+
+## Realtime scene adapter — `procedural_geometry.py`, `scene_sync.py`
+
+Generated flat and curved walls share one owned, versioned Geometry Nodes group.
+Drivers map the persisted `pj_wall` controls to hidden modifier inputs, so wall
+shape, height, resolution, yaw, arc limits, and face direction update through
+Blender's dependency graph without replacing the object's mesh datablock.
+
+Projector placement and coverage remain Python because cameras, ray casting,
+reports, and photometry use the single tested implementation in `core/`. Input
+callbacks queue a main-thread refresh after about 200 ms of idle time. The
+refresh reconciles only owned array cameras, then rebuilds overlays, calculated
+fields, and the report. Invalid intermediate edits preserve the last valid
+derived scene and expose a live error until the next valid edit.
 
 ---
 

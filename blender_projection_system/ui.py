@@ -173,7 +173,7 @@ class PJ_PT_selected_projector(_Base):
             box.label(text="Horizontal shift exceeds the lens limit", icon="ERROR")
 
         if not p.has_result:
-            layout.label(text="Run Calculate Coverage for results", icon="INFO")
+            layout.label(text="Waiting for live analysis results", icon="INFO")
             return
 
         box = layout.box()
@@ -235,8 +235,7 @@ class PJ_PT_report(_Base):
         pj = context.scene.pj
 
         if not pj.has_report:
-            layout.label(text="No results yet", icon="INFO")
-            layout.label(text="Run Calculate Coverage.")
+            layout.label(text="Waiting for the live report", icon="INFO")
             return
 
         layout.operator("projection.copy_report", icon="COPYDOWN")

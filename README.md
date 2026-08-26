@@ -21,7 +21,7 @@ reach. All of it computed, not drawn by hand.*
 
 ## Status — read this before trusting a number
 
-This is **v0.4**. The table below is the whole truth about what works.
+This is **v0.5**. The table below is the whole truth about what works.
 
 ### Implemented and tested
 
@@ -37,7 +37,8 @@ This is **v0.4**. The table below is the whole truth about what works.
 | Coverage / gaps / blend zones | Rasterised over the wall in arc-length × height. Reports lit area, dark bands, blend widths, and overlap count. |
 | Blend luminance modelling | Optional linear-ramp model of what an edge-blending processor does across each overlap — the combined luminance stays flat through the blend zone instead of doubling. Off by default; see *Experimental / limited*. |
 | Brightness | Illuminance and luminance from real per-point distance and incidence. **First-order estimate — see the assumptions below.** |
-| Non-destructive scene output | Generated content is owner-tagged and organised in dedicated collections. Re-plan/clear removes only add-on-owned generated objects. |
+| Realtime parametric scene | Generated flat and curved walls are driven by an owned Geometry Nodes group. Wall, array, projector, and analysis controls automatically converge cameras, overlays, computed fields, and the report after a short idle debounce. |
+| Non-destructive scene output | Generated content is owner-tagged and organised in dedicated collections. Live refresh reconciles only owned array cameras and overlays; manual projectors and user collections are preserved. |
 
 More than 200 tests run under plain CPython against the production modules,
 plus a headless Blender smoke workflow. Both run in CI.
@@ -168,9 +169,13 @@ the `PJ Targets` collection and set as the analysis target automatically.
 > edge. Many datasheets call that same geometry "100% offset". Halve the
 > datasheet number to get this field.
 
-### 3. Plan the array
+### 3. Watch the array update
 
-**Plan Projector Array.** You get three projectors, each hung at 3.2 m:
+As soon as a target exists, the array updates automatically. With the values
+above you get three projectors, each hung at 3.2 m. Continue editing any wall,
+lens, mounting, count, or overlap control and the cameras settle to the new
+solution after a short idle debounce. **Refresh Projector Array** remains as an
+explicit recovery/scripting control, not a required step:
 
 ```text
 PJ_01  mount x=+1.899 y=-1.024 z=3.200   throw 5.842 m   image 4.869 × 2.739 m   shift -56.6%
@@ -178,9 +183,11 @@ PJ_02  mount x=+2.158 y=+0.000 z=3.200   throw 5.842 m   image 4.869 × 2.739 m 
 PJ_03  mount x=+1.899 y=+1.024 z=3.200   throw 5.842 m   image 4.869 × 2.739 m   shift -56.6%
 ```
 
-### 4. Calculate coverage
+### 4. Read live coverage
 
-**Projection ▸ 3. Analysis ▸ Calculate Coverage.** The Report panel shows:
+Coverage overlays, calculated projector fields, and the Report panel update
+automatically with the array. **Projection ▸ 3. Analysis ▸ Refresh Coverage**
+forces the same shared calculation immediately when needed. The report shows:
 
 ```text
 Wall 'PJ_CurvedWall': 12.57 m arc x 3.00 m high (37.7 m2)

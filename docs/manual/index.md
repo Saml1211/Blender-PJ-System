@@ -93,12 +93,13 @@ The specification used when generating an array.
 | --- | --- |
 | **Projectors** | How many to spread across the wall |
 | **Overlap** | Fraction of each image shared with its neighbour for blending. 0.10–0.20 is the usual working range |
-| **Plan Projector Array** | Generates the projectors and writes the plan to the Report panel |
+| **Refresh Projector Array** | Forces the same live planner to run immediately; normally no click is required |
 
-Planning solves for the standoff distance that produces the required image
-width on the curved surface, then places each projector on the radial line
-through its target point. Re-running replaces the previously generated array
-but leaves manually added projectors alone.
+Planning runs automatically after relevant controls settle for about 200 ms.
+It solves for the standoff distance that produces the required image width on
+the target surface, then reconciles the owned camera objects in place. Count
+changes add or remove only owned array cameras; manually added projectors are
+left alone.
 
 ### Single projectors
 
@@ -122,8 +123,11 @@ because they are consequences of the geometry, not inputs.
 
 ## 3. Analysis
 
-**Calculate Coverage** casts every visible projector's frustum onto the target
-wall and builds the overlay.
+Coverage is automatic. After a target exists, edits to wall, array, projector,
+or analysis controls cast every visible projector's frustum onto the target,
+refresh the overlay, update calculated fields, and replace the report after a
+short idle debounce. **Refresh Coverage** forces the same shared calculation
+immediately.
 
 | Setting | Meaning |
 | --- | --- |
@@ -134,7 +138,8 @@ wall and builds the overlay.
 
 **Clear Analysis** deletes only owner-tagged overlay objects from the add-on's
 analysis collection. Your wall, projectors, and same-named user collections are
-never touched.
+never touched. Because analysis is live, the overlays return after the next
+relevant input edit.
 
 ### Reading the overlay
 

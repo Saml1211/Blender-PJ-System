@@ -103,6 +103,13 @@ def _is_wall_object(self, obj):
     return bool(getattr(obj, "pj_wall", None) and obj.pj_wall.is_wall)
 
 
+def _update_wall_geometry(self, context):
+    """Tag the owning object so its property-driven node modifier reevaluates."""
+    obj = self.id_data
+    if isinstance(obj, Object):
+        obj.update_tag(refresh={"OBJECT"})
+
+
 # ---------------------------------------------------------------------------
 # Property groups
 # ---------------------------------------------------------------------------
@@ -166,6 +173,7 @@ class PJ_PG_Wall(PropertyGroup):
         min=0.01,
         soft_max=100.0,
         unit="LENGTH",
+        update=_update_wall_geometry,
     )
     yaw_deg: FloatProperty(
         name="Facing Yaw",
@@ -176,6 +184,7 @@ class PJ_PG_Wall(PropertyGroup):
         default=0.0,
         min=-360.0,
         max=360.0,
+        update=_update_wall_geometry,
     )
     radius: FloatProperty(
         name="Radius",
@@ -184,6 +193,7 @@ class PJ_PG_Wall(PropertyGroup):
         min=0.01,
         soft_max=100.0,
         unit="LENGTH",
+        update=_update_wall_geometry,
     )
     height: FloatProperty(
         name="Height",
@@ -192,6 +202,7 @@ class PJ_PG_Wall(PropertyGroup):
         min=0.01,
         soft_max=30.0,
         unit="LENGTH",
+        update=_update_wall_geometry,
     )
     arc_start_deg: FloatProperty(
         name="Arc Start",
@@ -199,6 +210,7 @@ class PJ_PG_Wall(PropertyGroup):
         default=-45.0,
         min=-360.0,
         max=360.0,
+        update=_update_wall_geometry,
     )
     arc_end_deg: FloatProperty(
         name="Arc End",
@@ -206,6 +218,7 @@ class PJ_PG_Wall(PropertyGroup):
         default=45.0,
         min=-360.0,
         max=360.0,
+        update=_update_wall_geometry,
     )
     segments: IntProperty(
         name="Segments",
@@ -213,11 +226,13 @@ class PJ_PG_Wall(PropertyGroup):
         default=48,
         min=2,
         max=512,
+        update=_update_wall_geometry,
     )
     concave: BoolProperty(
         name="Concave",
         description="Projectors sit inside the arc (the usual curved-wall case)",
         default=True,
+        update=_update_wall_geometry,
     )
 
 

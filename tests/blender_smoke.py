@@ -43,6 +43,18 @@ def approx(a: float, b: float, tol: float = 1e-3) -> bool:
     return abs(a - b) <= tol
 
 
+def evaluated_mesh_snapshot(obj):
+    """Copy evaluated vertices and face geometry, then release the temp mesh."""
+    evaluated = obj.evaluated_get(bpy.context.evaluated_depsgraph_get())
+    mesh = evaluated.to_mesh()
+    try:
+        vertices = [tuple(vertex.co) for vertex in mesh.vertices]
+        polygons = [(tuple(face.center), tuple(face.normal)) for face in mesh.polygons]
+        return vertices, polygons
+    finally:
+        evaluated.to_mesh_clear()
+
+
 def main() -> None:
     import blender_projection_system as pjs
 
@@ -89,11 +101,18 @@ def main() -> None:
     wall = scene.pj.target_wall
     check(wall is not None, "target wall was set on the scene")
     check(wall.pj_wall.is_wall, "wall object is tagged as a projection wall")
-    check(len(wall.data.polygons) == 48, f"wall mesh has 48 faces (got {len(wall.data.polygons)})")
+    wall_vertices, wall_polygons = evaluated_mesh_snapshot(wall)
+    check(
+        len(wall_polygons) == 48,
+        f"evaluated wall mesh has 48 faces (got {len(wall_polygons)})",
+    )
 
-    middle_face = wall.data.polygons[len(wall.data.polygons) // 2]
-    radial = mathutils.Vector((middle_face.center.x, middle_face.center.y, 0.0)).normalized()
-    check(middle_face.normal.dot(-radial) > 0.99, "concave wall faces wind toward projectors")
+    middle_center, middle_normal = wall_polygons[len(wall_polygons) // 2]
+    radial = mathutils.Vector((middle_center[0], middle_center[1], 0.0)).normalized()
+    check(
+        mathutils.Vector(middle_normal).dot(-radial) > 0.99,
+        "concave wall faces wind toward projectors",
+    )
 
     expected_arc = 8.0 * math.radians(90.0)
     from blender_projection_system import visualization as viz
@@ -103,14 +122,50 @@ def main() -> None:
     check(approx(core_wall.arc_length, expected_arc), f"arc length {core_wall.arc_length:.3f} m")
 
     wall.pj_wall.radius = 9.0
-    old_mesh = wall.data
-    old_mesh_name = old_mesh.name
-    check(viz.sync_generated_wall_mesh(wall), "generated wall mesh resynchronises")
-    radial = [math.hypot(v.co.x, v.co.y) for v in wall.data.vertices]
-    check(all(approx(r, 9.0) for r in radial), "edited wall radius reaches the visible mesh")
-    check(old_mesh_name not in bpy.data.meshes, "superseded generated wall mesh is removed")
+    stable_mesh = wall.data
+    bpy.context.view_layer.update()
+    wall_vertices, _wall_polygons = evaluated_mesh_snapshot(wall)
+    radial = [math.hypot(x, y) for x, y, _z in wall_vertices]
+    check(all(approx(r, 9.0) for r in radial), "edited radius updates Geometry Nodes live")
+    check(wall.data is stable_mesh, "live wall edits preserve the mesh datablock")
+    check(viz.sync_generated_wall_mesh(wall), "procedural wall migration is idempotent")
+    check(viz.sync_generated_wall_mesh(wall), "repeated procedural wall migration succeeds")
+    owned_modifiers = [
+        modifier
+        for modifier in wall.modifiers
+        if modifier.get(viz.OWNER_KEY) == viz.OWNER_ID
+    ]
+    check(len(owned_modifiers) == 1, "one owned Geometry Nodes modifier is attached")
+
+    wall.pj_wall.height = 4.0
+    wall.pj_wall.arc_start_deg = -30.0
+    wall.pj_wall.arc_end_deg = 60.0
+    wall.pj_wall.segments = 12
+    wall.pj_wall.concave = False
+    bpy.context.view_layer.update()
+    wall_vertices, wall_polygons = evaluated_mesh_snapshot(wall)
+    z_values = [z for _x, _y, z in wall_vertices]
+    angles = [math.degrees(math.atan2(y, x)) for x, y, _z in wall_vertices]
+    check(approx(max(z_values) - min(z_values), 4.0), "edited curved height updates live")
+    check(
+        approx(min(angles), -30.0) and approx(max(angles), 60.0),
+        "edited arc limits update live",
+    )
+    check(len(wall_polygons) == 12, "edited curved segments update live")
+    middle_center, middle_normal = wall_polygons[len(wall_polygons) // 2]
+    radial = mathutils.Vector((middle_center[0], middle_center[1], 0.0)).normalized()
+    check(
+        mathutils.Vector(middle_normal).dot(radial) > 0.99,
+        "convex curved-wall normals update live",
+    )
+
     wall.pj_wall.radius = 8.0
-    viz.sync_generated_wall_mesh(wall)
+    wall.pj_wall.height = 3.0
+    wall.pj_wall.arc_start_deg = -45.0
+    wall.pj_wall.arc_end_deg = 45.0
+    wall.pj_wall.segments = 48
+    wall.pj_wall.concave = True
+    bpy.context.view_layer.update()
 
     parent = bpy.data.objects.new("Transformed_Wall_Parent", None)
     scene.collection.objects.link(parent)
@@ -158,20 +213,48 @@ def main() -> None:
         check(False, "flat wall became the analysis target")
         return
     check(flat_obj.pj_wall.kind == "FLAT", "flat wall tagged kind FLAT")
+    flat_vertices, flat_polygons = evaluated_mesh_snapshot(flat_obj)
     check(
-        len(flat_obj.data.polygons) == 24,
-        f"flat wall mesh has 24 faces (got {len(flat_obj.data.polygons)})",
+        len(flat_polygons) == 24,
+        f"evaluated flat wall mesh has 24 faces (got {len(flat_polygons)})",
     )
     from blender_projection_system.core.surfaces import PlanarWall
 
     flat_core = viz.wall_from_object(flat_obj)
     check(isinstance(flat_core, PlanarWall), "wall_from_object rebuilds a PlanarWall")
     check(approx(flat_core.arc_length, 4.0), f"flat wall width {flat_core.arc_length:.3f} m")
-    mid_face = flat_obj.data.polygons[len(flat_obj.data.polygons) // 2]
+    _mid_center, mid_normal = flat_polygons[len(flat_polygons) // 2]
     check(
-        mid_face.normal.dot(mathutils.Vector((-1.0, 0.0, 0.0))) > 0.99,
+        mathutils.Vector(mid_normal).dot(mathutils.Vector((-1.0, 0.0, 0.0))) > 0.99,
         "flat wall winds toward projectors",
     )
+    flat_mesh_data = flat_obj.data
+    flat_obj.pj_wall.width = 6.0
+    flat_obj.pj_wall.yaw_deg = 30.0
+    flat_obj.pj_wall.height = 3.5
+    flat_obj.pj_wall.segments = 12
+    bpy.context.view_layer.update()
+    flat_vertices, flat_polygons = evaluated_mesh_snapshot(flat_obj)
+    yaw = math.radians(30.0)
+    tangent = mathutils.Vector((-math.sin(yaw), math.cos(yaw), 0.0))
+    along = [mathutils.Vector(vertex).dot(tangent) for vertex in flat_vertices]
+    check(approx(max(along) - min(along), 6.0), "flat width and yaw update live")
+    _mid_center, mid_normal = flat_polygons[len(flat_polygons) // 2]
+    expected_normal = mathutils.Vector((-math.cos(yaw), -math.sin(yaw), 0.0))
+    check(mathutils.Vector(mid_normal).dot(expected_normal) > 0.99, "flat live yaw rotates normals")
+    z_values = [z for _x, _y, z in flat_vertices]
+    check(approx(max(z_values) - min(z_values), 3.5), "flat height updates live")
+    check(len(flat_polygons) == 12, "flat segments update live")
+    check(flat_obj.data is flat_mesh_data, "flat live edits preserve the mesh datablock")
+    check(
+        wall.modifiers[0].node_group is flat_obj.modifiers[0].node_group,
+        "generated walls share one owned node group",
+    )
+    flat_obj.pj_wall.width = 4.0
+    flat_obj.pj_wall.yaw_deg = 0.0
+    flat_obj.pj_wall.height = 2.5
+    flat_obj.pj_wall.segments = 24
+    bpy.context.view_layer.update()
     # A projector aimed from -X lands on the planar surface end to end.
     # Mount near the image-centre height so LEVEL mode needs only modest
     # vertical lens shift (~43%) instead of pushing the image off the wall.

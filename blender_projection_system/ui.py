@@ -59,23 +59,29 @@ class PJ_PT_target(_Base):
         if props.kind == "FLAT":
             col.prop(props, "width")
             col.prop(props, "yaw_deg")
-        else:
+            col.prop(props, "height")
+            col.prop(props, "segments")
+        elif props.kind == "CYLINDER":
             col.prop(props, "radius")
             row = col.row(align=True)
             row.prop(props, "arc_start_deg", text="Arc Start")
             row.prop(props, "arc_end_deg", text="End")
             col.prop(props, "concave")
-        col.prop(props, "height")
+            col.prop(props, "height")
+            col.prop(props, "segments")
+        else:
+            col.label(text="Imported evaluated mesh", icon="MODIFIER")
 
         try:
-            arc_length = viz.wall_from_object(wall_obj).arc_length
+            surface = viz.wall_from_object(wall_obj)
         except ProjectionError as exc:
             box.label(text=str(exc), icon="ERROR")
             return
         info = box.column(align=True)
-        info.label(text=f"Arc length: {arc_length:.2f} m")
-        info.label(text=f"Surface area: {arc_length * props.height:.1f} m2")
-        info.label(text="Mesh updates on the next plan or analysis.", icon="INFO")
+        info.label(text=f"Arc length: {surface.arc_length:.2f} m")
+        info.label(text=f"Surface area: {surface.area:.1f} m2")
+        if props.kind != "MESH":
+            info.label(text="Geometry updates live.", icon="DRIVER")
 
 
 class PJ_PT_projectors(_Base):

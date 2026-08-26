@@ -179,6 +179,7 @@ class PJ_OT_create_curved_wall(Operator):
         props.arc_end_deg = self.arc_deg / 2.0
         props.segments = self.segments
         props.concave = self.concave
+        viz.sync_generated_wall_mesh(obj)
 
         viz.link_only_to(obj, viz.get_collection(context, viz.COLLECTION_TARGETS))
         context.scene.pj.target_wall = obj
@@ -261,6 +262,7 @@ class PJ_OT_create_flat_wall(Operator):
         props.height = self.height
         props.yaw_deg = self.yaw_deg
         props.segments = self.segments
+        viz.sync_generated_wall_mesh(obj)
 
         viz.link_only_to(obj, viz.get_collection(context, viz.COLLECTION_TARGETS))
         context.scene.pj.target_wall = obj

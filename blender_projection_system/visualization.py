@@ -1,10 +1,10 @@
 """Scene construction and analysis visualisation.
 
-Every mesh here is generated from :mod:`blender_projection_system.core` output
-and lives in a dedicated collection. v0.1 drove a Geometry Nodes cone through
-drivers, which silently produced nothing when a socket name changed between
-Blender versions; building explicit meshes is boring, deterministic and easy
-to verify.
+Projection results and overlays are generated from
+:mod:`blender_projection_system.core` output and live in dedicated owned
+collections. Generated target walls use the versioned Geometry Nodes adapter
+in :mod:`blender_projection_system.procedural_geometry`; imported targets keep
+their user-owned modifier stacks.
 
 Nothing in this module registers Blender classes - it is called by the
 operators in :mod:`blender_projection_system.operators`.
@@ -26,14 +26,11 @@ from .core.mesh_surface import MeshHit, MeshRayCast, MeshSurface
 from .core.surfaces import CylindricalWall, PlanarWall, Surface
 from .core.vectors import length as vec_length
 from .core.vectors import sub as sub_vec
+from .scene_ids import MATERIAL_ROLE_KEY, OWNER_ID, OWNER_KEY, ROLE_KEY
 
 COLLECTION_TARGETS = "PJ Targets"
 COLLECTION_PROJECTORS = "PJ Projectors"
 COLLECTION_ANALYSIS = "PJ Analysis"
-OWNER_ID = "projection_planner"
-OWNER_KEY = "pj_owner"
-ROLE_KEY = "pj_collection_role"
-MATERIAL_ROLE_KEY = "pj_material_role"
 
 #: Footprint outlines are pushed this far off the wall so they do not z-fight.
 SURFACE_OFFSET = 0.01
@@ -261,14 +258,17 @@ def wall_from_object(obj: bpy.types.Object) -> Surface:
 
 
 def sync_generated_wall_mesh(obj: bpy.types.Object) -> bool:
-    """Rebuild a generated wall mesh after its editable parameters change."""
+    """Ensure a generated wall has the current driven Geometry Nodes adapter.
+
+    Kept under its historical name for scripting compatibility. The mesh
+    datablock is no longer replaced: drivers keep the evaluated geometry in
+    sync with ``obj.pj_wall``.
+    """
     if not obj.get("pj_generated_wall") or obj.get(OWNER_KEY) != OWNER_ID:
         return False
-    wall = wall_from_object(obj)
-    old_mesh = obj.data
-    obj.data = build_wall_mesh(wall, obj.pj_wall.segments)
-    if isinstance(old_mesh, bpy.types.Mesh) and old_mesh.users == 0:
-        bpy.data.meshes.remove(old_mesh)
+    from .procedural_geometry import ensure_wall_modifier
+
+    ensure_wall_modifier(obj)
     return True
 
 

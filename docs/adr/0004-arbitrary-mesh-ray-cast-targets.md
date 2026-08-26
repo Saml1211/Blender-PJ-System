@@ -71,13 +71,18 @@ triangle area-weighted distribution, overridable). It then:
 
 1. Builds a bounding rectangle in the plane perpendicular to the frontal axis;
    `s` runs along its width, `z` along its vertical extent.
-2. Casts parallel rays along the *negative* frontal axis on an S×Z scan
-   lattice to record which surface depth each `(s, z)` column hits first.
+2. Casts parallel rays on an S×Z scan lattice, starting on the projector side
+   (the side `facing` points toward) and travelling into the surface, so
+   depth-varying meshes record their *near* face rather than a far shell.
    `point_at(s, z)` bilinearly interpolates the recorded triangle hit points;
-   `normal_at_s(s)` interpolates vertex normals similarly.
-3. **Validates single-valuedness**: any scan ray that finds multiple hits
-   separated by more than a tolerance (overhang, fold-back) marks the mesh as
-   unsuitable and raises a `ProjectionError` naming the offending region.
+   `normal_at_s(s)` averages the column's oriented face normals.
+3. **Validates single-valuedness** as a depth-smoothness check: adjacent
+   lattice depths that jump by more than `_SLOPE_LIMIT × max(cell size)`
+   (steeper than ~63° relative to the frontal axis) mark the mesh unsuitable
+   and raise a `ProjectionError` naming the offending region.
+   (Implementation note: this replaced the original per-ray multi-hit idea —
+   Blender's `BVHTree.ray_cast` reports only the first hit, so smoothness
+   over recorded depths is the equivalent test both casters run identically.)
 
 Consequence, stated honestly: domes, columns, and deeply folded geometry are
 **out of scope and rejected loudly**, not silently mangled. A projection target

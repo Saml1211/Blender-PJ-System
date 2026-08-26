@@ -25,6 +25,12 @@ from .core.pose import level_pose, look_at
 from .core.surfaces import CylindricalWall, PlanarWall, Surface
 from .core.throw import ProjectorSpec, image_size, required_lens_shift_v
 from .scene_sync import (
+    SyncScope,
+    request_scene_sync,
+    sync_analysis,
+    sync_array,
+)
+from .scene_sync import (
     pose_from_matrix as _sync_pose_from_matrix,
 )
 from .scene_sync import (
@@ -35,10 +41,6 @@ from .scene_sync import (
 )
 from .scene_sync import (
     set_report as _sync_set_report,
-)
-from .scene_sync import (
-    sync_analysis,
-    sync_array,
 )
 
 # ---------------------------------------------------------------------------
@@ -366,6 +368,8 @@ class PJ_OT_add_projector(Operator):
         obj.select_set(True)
         context.view_layer.objects.active = obj
 
+        if wall_obj is not None:
+            request_scene_sync(scene, SyncScope.ANALYSIS)
         note = "" if wall_obj else " (no target wall set, so it is not aimed)"
         self.report({"INFO"}, f"Added '{obj.name}'{note}")
         return {"FINISHED"}
@@ -437,21 +441,22 @@ class PJ_OT_aim_at_wall(Operator):
             viz.apply_spec_to_object(obj, spec, obj.pj_projector.mount_mode)
             viz.configure_camera(obj, spec, distance)
 
+        request_scene_sync(context.scene, SyncScope.ANALYSIS)
         self.report({"INFO"}, f"Aimed {len(projectors)} projector(s) at '{wall_obj.name}'")
         return {"FINISHED"}
 
 
 class PJ_OT_plan_array(Operator):
-    """Generate a projector array across the target wall with the set overlap"""
+    """Refresh the automatically maintained projector array immediately"""
 
     bl_idname = "projection.plan_array"
-    bl_label = "Plan Projector Array"
+    bl_label = "Refresh Projector Array"
     bl_options = {"REGISTER", "UNDO"}
 
     replace_existing: BoolProperty(
         name="Replace Existing",
         default=True,
-        description="Remove previously generated array projectors before planning",
+        description="Compatibility option; live refresh always reconciles the owned array",
     )
 
     @classmethod
@@ -493,10 +498,10 @@ class PJ_OT_plan_array(Operator):
 
 
 class PJ_OT_analyze(Operator):
-    """Cast every projector onto the target wall and report coverage"""
+    """Refresh the automatically maintained coverage and report immediately"""
 
     bl_idname = "projection.analyze"
-    bl_label = "Calculate Coverage"
+    bl_label = "Refresh Coverage"
     bl_options = {"REGISTER", "UNDO"}
 
     visualize: BoolProperty(

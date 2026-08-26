@@ -103,11 +103,50 @@ def _is_wall_object(self, obj):
     return bool(getattr(obj, "pj_wall", None) and obj.pj_wall.is_wall)
 
 
+def _request_scope(self, context, scope_name: str) -> None:
+    from .scene_sync import SyncScope, request_scene_sync
+
+    owner = self.id_data
+    if isinstance(owner, Scene):
+        scenes = (owner,)
+    elif isinstance(owner, Object):
+        scenes = tuple(owner.users_scene)
+    elif context is not None and context.scene is not None:
+        scenes = (context.scene,)
+    else:
+        scenes = ()
+    scope = SyncScope[scope_name]
+    for scene in scenes:
+        request_scene_sync(scene, scope)
+
+
 def _update_wall_geometry(self, context):
-    """Tag the owning object so its property-driven node modifier reevaluates."""
+    """Tag the wall for node evaluation and queue every dependent result."""
     obj = self.id_data
     if isinstance(obj, Object):
         obj.update_tag(refresh={"OBJECT"})
+    _request_scope(self, context, "WALL")
+
+
+def _update_wall_kind(self, context):
+    obj = self.id_data
+    if isinstance(obj, Object):
+        from .procedural_geometry import sync_wall_kind
+
+        sync_wall_kind(obj)
+    _update_wall_geometry(self, context)
+
+
+def _update_array(self, context):
+    _request_scope(self, context, "ARRAY")
+
+
+def _update_analysis(self, context):
+    _request_scope(self, context, "ANALYSIS")
+
+
+def _update_projector(self, context):
+    _request_scope(self, context, "ANALYSIS")
 
 
 # ---------------------------------------------------------------------------
@@ -165,6 +204,7 @@ class PJ_PG_Wall(PropertyGroup):
             ),
         ],
         default="CYLINDER",
+        update=_update_wall_kind,
     )
     width: FloatProperty(
         name="Width",
@@ -253,6 +293,7 @@ class PJ_PG_Projector(PropertyGroup):
         min=0.1,
         soft_max=10.0,
         precision=3,
+        update=_update_projector,
     )
     throw_ratio_min: FloatProperty(
         name="Lens Min TR",
@@ -260,6 +301,7 @@ class PJ_PG_Projector(PropertyGroup):
         default=0.0,
         min=0.0,
         precision=3,
+        update=_update_projector,
     )
     throw_ratio_max: FloatProperty(
         name="Lens Max TR",
@@ -267,15 +309,21 @@ class PJ_PG_Projector(PropertyGroup):
         default=0.0,
         min=0.0,
         precision=3,
+        update=_update_projector,
     )
-    aspect_w: IntProperty(name="Aspect W", default=16, min=1, max=256)
-    aspect_h: IntProperty(name="Aspect H", default=9, min=1, max=256)
+    aspect_w: IntProperty(
+        name="Aspect W", default=16, min=1, max=256, update=_update_projector
+    )
+    aspect_h: IntProperty(
+        name="Aspect H", default=9, min=1, max=256, update=_update_projector
+    )
     lumens: FloatProperty(
         name="Lumens",
         description="Rated light output. Derate it yourself for eco mode or lamp age",
         default=7000.0,
         min=0.0,
         soft_max=50000.0,
+        update=_update_projector,
     )
     lens_shift_v: FloatProperty(
         name="Vertical Lens Shift",
@@ -288,6 +336,7 @@ class PJ_PG_Projector(PropertyGroup):
         min=-2.0,
         max=2.0,
         precision=3,
+        update=_update_projector,
     )
     lens_shift_h: FloatProperty(
         name="Horizontal Lens Shift",
@@ -296,6 +345,7 @@ class PJ_PG_Projector(PropertyGroup):
         min=-2.0,
         max=2.0,
         precision=3,
+        update=_update_projector,
     )
     max_lens_shift_v: FloatProperty(
         name="Max Vertical Shift",
@@ -304,6 +354,7 @@ class PJ_PG_Projector(PropertyGroup):
         min=0.0,
         max=2.0,
         precision=3,
+        update=_update_projector,
     )
     max_lens_shift_h: FloatProperty(
         name="Max Horizontal Shift",
@@ -311,11 +362,13 @@ class PJ_PG_Projector(PropertyGroup):
         min=0.0,
         max=2.0,
         precision=3,
+        update=_update_projector,
     )
     mount_mode: EnumProperty(
         name="Mount Mode",
         items=MOUNT_MODE_ITEMS,
         default=MODE_LEVEL,
+        update=_update_projector,
     )
 
     # -- computed, written by the analysis operator ------------------------
@@ -334,9 +387,10 @@ class PJ_PG_Scene(PropertyGroup):
 
     target_wall: PointerProperty(
         name="Target Wall",
-        description="The curved wall the array is planned against",
+        description="The surface the live array and analysis are planned against",
         type=Object,
         poll=_is_wall_object,
+        update=_update_array,
     )
 
     projector_count: IntProperty(
@@ -345,6 +399,7 @@ class PJ_PG_Scene(PropertyGroup):
         default=3,
         min=1,
         max=24,
+        update=_update_array,
     )
     overlap: FloatProperty(
         name="Overlap",
@@ -354,6 +409,7 @@ class PJ_PG_Scene(PropertyGroup):
         max=0.6,
         precision=3,
         subtype="FACTOR",
+        update=_update_array,
     )
     mount_height: FloatProperty(
         name="Mount Height",
@@ -362,6 +418,7 @@ class PJ_PG_Scene(PropertyGroup):
         min=0.0,
         soft_max=30.0,
         unit="LENGTH",
+        update=_update_array,
     )
     image_center_height: FloatProperty(
         name="Image Centre Above Wall Base",
@@ -370,15 +427,33 @@ class PJ_PG_Scene(PropertyGroup):
         min=0.0,
         soft_max=30.0,
         unit="LENGTH",
+        update=_update_array,
     )
-    mount_mode: EnumProperty(name="Mount Mode", items=MOUNT_MODE_ITEMS, default=MODE_LEVEL)
+    mount_mode: EnumProperty(
+        name="Mount Mode", items=MOUNT_MODE_ITEMS, default=MODE_LEVEL, update=_update_array
+    )
 
     # -- the spec used when generating an array ----------------------------
-    throw_ratio: FloatProperty(name="Throw Ratio", default=1.2, min=0.1, soft_max=10.0, precision=3)
-    aspect_w: IntProperty(name="Aspect W", default=16, min=1, max=256)
-    aspect_h: IntProperty(name="Aspect H", default=9, min=1, max=256)
-    lumens: FloatProperty(name="Lumens", default=7000.0, min=0.0, soft_max=50000.0)
-    max_lens_shift_v: FloatProperty(name="Max Vertical Shift", default=0.5, min=0.0, max=2.0)
+    throw_ratio: FloatProperty(
+        name="Throw Ratio",
+        default=1.2,
+        min=0.1,
+        soft_max=10.0,
+        precision=3,
+        update=_update_array,
+    )
+    aspect_w: IntProperty(
+        name="Aspect W", default=16, min=1, max=256, update=_update_array
+    )
+    aspect_h: IntProperty(
+        name="Aspect H", default=9, min=1, max=256, update=_update_array
+    )
+    lumens: FloatProperty(
+        name="Lumens", default=7000.0, min=0.0, soft_max=50000.0, update=_update_array
+    )
+    max_lens_shift_v: FloatProperty(
+        name="Max Vertical Shift", default=0.5, min=0.0, max=2.0, update=_update_array
+    )
 
     # -- analysis settings --------------------------------------------------
     samples: IntProperty(
@@ -387,9 +462,22 @@ class PJ_PG_Scene(PropertyGroup):
         default=9,
         min=3,
         max=41,
+        update=_update_array,
     )
-    grid_s: IntProperty(name="Coverage Grid (arc)", default=120, min=8, max=600)
-    grid_z: IntProperty(name="Coverage Grid (height)", default=24, min=4, max=200)
+    grid_s: IntProperty(
+        name="Coverage Grid (arc)",
+        default=120,
+        min=8,
+        max=600,
+        update=_update_analysis,
+    )
+    grid_z: IntProperty(
+        name="Coverage Grid (height)",
+        default=24,
+        min=4,
+        max=200,
+        update=_update_analysis,
+    )
     blend_model: EnumProperty(
         name="Blend Model",
         description=(
@@ -411,6 +499,7 @@ class PJ_PG_Scene(PropertyGroup):
             ),
         ],
         default="RAW",
+        update=_update_analysis,
     )
     screen_gain: FloatProperty(
         name="Screen Gain",
@@ -419,11 +508,13 @@ class PJ_PG_Scene(PropertyGroup):
         min=0.05,
         max=5.0,
         precision=2,
+        update=_update_analysis,
     )
     draw_frustums: BoolProperty(
         name="Draw Frustums",
         description="Include lens-to-corner edges in the analysis visualisation",
         default=True,
+        update=_update_analysis,
     )
 
     # -- lens scratchpad ----------------------------------------------------
@@ -454,6 +545,11 @@ class PJ_PG_Scene(PropertyGroup):
     # -- last report --------------------------------------------------------
     report_lines: CollectionProperty(type=PJ_PG_ReportLine)
     has_report: BoolProperty(default=False)
+    live_error: StringProperty(
+        name="Live Update Error",
+        description="Most recent automatic planning or analysis error",
+        default="",
+    )
 
 
 _CLASSES = (

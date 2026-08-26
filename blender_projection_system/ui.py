@@ -118,7 +118,8 @@ class PJ_PT_projectors(_Base):
         col.prop(pj, "projector_count")
         col.prop(pj, "overlap")
         col.separator()
-        col.operator("projection.plan_array", icon="MOD_ARRAY")
+        col.label(text="Array and coverage update automatically.", icon="DRIVER")
+        col.operator("projection.plan_array", icon="FILE_REFRESH")
 
         col = layout.column(align=True)
         col.operator("projection.add_projector", icon="ADD")
@@ -199,11 +200,16 @@ class PJ_PT_analysis(_Base):
         layout = self.layout
         pj = context.scene.pj
 
-        col = layout.column(align=True)
-        col.scale_y = 1.4
-        col.operator("projection.analyze", icon="SHADERFX")
+        if pj.live_error:
+            error = layout.box()
+            error.alert = True
+            error.label(text="Live update paused on the last valid scene", icon="ERROR")
+            error.label(text=pj.live_error)
+        else:
+            layout.label(text="Coverage is live", icon="DRIVER")
 
         col = layout.column(align=True)
+        col.operator("projection.analyze", icon="FILE_REFRESH")
         col.operator("projection.clear_analysis", icon="TRASH")
 
         box = layout.box()

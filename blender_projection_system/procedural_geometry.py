@@ -370,6 +370,27 @@ def ensure_wall_modifier(obj: bpy.types.Object) -> bpy.types.NodesModifier:
     return modifier
 
 
+def sync_wall_kind(obj: bpy.types.Object) -> bool:
+    """Update the non-driven wall-kind socket on an existing owned modifier."""
+    modifier = next(
+        (
+            candidate
+            for candidate in obj.modifiers
+            if candidate.type == "NODES"
+            and candidate.node_group is not None
+            and candidate.node_group.get(OWNER_KEY) == OWNER_ID
+            and candidate.node_group.get(NODE_ROLE_KEY) == NODE_ROLE
+        ),
+        None,
+    )
+    if modifier is None:
+        return False
+    identifier = _socket_identifier(modifier.node_group, "is_flat")
+    modifier[identifier] = obj.pj_wall.kind == "FLAT"
+    obj.update_tag(refresh={"OBJECT"})
+    return True
+
+
 def is_procedural_wall(obj: bpy.types.Object) -> bool:
     """Whether ``obj`` has the current owned procedural-wall modifier."""
     return any(

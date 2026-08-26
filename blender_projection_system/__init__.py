@@ -29,12 +29,12 @@ except ImportError:  # pragma: no cover
     bpy = None
 
 if bpy is not None:  # pragma: no cover - requires Blender
-    from . import operators, properties, ui
+    from . import operators, properties, scene_sync, ui
 
-    # Order matters: properties first, since operators and panels read them.
-    # ``visualization`` registers nothing - it is a helper module imported by
-    # the operators.
-    _MODULES = (properties, operators, ui)
+    # Order matters: properties first; live sync then migrates loaded data and
+    # owns its timer before operators and panels become available.
+    # ``visualization`` and ``procedural_geometry`` register nothing.
+    _MODULES = (properties, scene_sync, operators, ui)
     _REGISTERED = False
 
     def register():  # pyright: ignore[reportRedeclaration] - one def per bpy branch

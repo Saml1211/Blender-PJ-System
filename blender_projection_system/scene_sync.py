@@ -398,3 +398,20 @@ def cancel_pending_syncs() -> None:
     if _timer_registered and bpy.app.timers.is_registered(_flush_pending):
         bpy.app.timers.unregister(_flush_pending)
     _timer_registered = False
+
+
+def register() -> None:
+    """Migrate loaded generated walls and converge scenes after registration."""
+    for obj in bpy.data.objects:
+        if obj.get("pj_generated_wall") and obj.get(OWNER_KEY) == OWNER_ID:
+            try:
+                viz.sync_generated_wall_mesh(obj)
+            except ProjectionError as exc:
+                print(f"[Projection Planner] Could not migrate '{obj.name}': {exc}")
+    for scene in bpy.data.scenes:
+        if target_wall(scene) is not None:
+            request_scene_sync(scene, SyncScope.WALL)
+
+
+def unregister() -> None:
+    cancel_pending_syncs()

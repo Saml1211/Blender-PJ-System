@@ -186,14 +186,22 @@ def _bvh_caster(bvh: BVHTree) -> MeshRayCast:
 def _mesh_wall_from_object(obj: bpy.types.Object) -> MeshSurface:
     """Rebuild an imported-mesh target, injecting its BVH as the caster.
 
-    Uses ``obj.data`` directly: modifiers are not applied, matching the
-    "the mesh you see is the surface you get" expectation for imports.
+    Uses the depsgraph-evaluated mesh so modifier stacks (subdivision,
+    arrays, displacement, …) apply — the mesh you see in the viewport is
+    the surface you get. The evaluated mesh is released again before the
+    surface is returned.
     """
-    mesh = obj.data
-    if len(mesh.polygons) == 0:
-        raise ProjectionError(f"'{obj.name}' has no faces; nothing to project onto")
-    mesh.calc_loop_triangles()
-    tris = [tuple(lt.vertices) for lt in mesh.loop_triangles]
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    eval_obj = obj.evaluated_get(depsgraph)
+    mesh = eval_obj.to_mesh()
+    try:
+        if len(mesh.polygons) == 0:
+            raise ProjectionError(f"'{obj.name}' has no faces; nothing to project onto")
+        mesh.calc_loop_triangles()
+        tris = [tuple(lt.vertices) for lt in mesh.loop_triangles]
+        vertices = [(v.co.x, v.co.y, v.co.z) for v in mesh.vertices]
+    finally:
+        eval_obj.to_mesh_clear()
     if not tris:
         raise ProjectionError(f"'{obj.name}' could not be triangulated for ray casting")
     if len(tris) > MAX_MESH_TRIS:
@@ -204,8 +212,8 @@ def _mesh_wall_from_object(obj: bpy.types.Object) -> MeshSurface:
 
     translation = obj.matrix_world.translation
     world_vertices = [
-        (v.co.x + translation.x, v.co.y + translation.y, v.co.z + translation.z)
-        for v in mesh.vertices
+        (x + translation.x, y + translation.y, z + translation.z)
+        for x, y, z in vertices
     ]
     bvh = BVHTree.FromPolygons(world_vertices, tris, all_triangles=True)
     return MeshSurface.from_triangles(

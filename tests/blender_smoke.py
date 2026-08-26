@@ -281,6 +281,33 @@ def main() -> None:
         bpy.data.meshes.remove(mesh_data)
     scene.pj.target_wall = None
 
+    # -- 2d. modifier stacks on a mesh target are applied --------------------
+    print("\n[2d] modifiers on a mesh target are applied")
+    # Same 4 m × 2.5 m quad as [2c], but an Array modifier duplicates it
+    # 4 m along +Y: the evaluated mesh is 8 m wide, the base mesh is not.
+    mod_mesh_data = bpy.data.meshes.new("ArrayWall")
+    mod_mesh_data.from_pydata(verts, [], faces)
+    mod_obj = bpy.data.objects.new("ArrayWall", mod_mesh_data)
+    scene.collection.objects.link(mod_obj)
+    mod_obj.location = (0.0, 0.0, 0.0)
+    array_mod = mod_obj.modifiers.new("Duplicate", "ARRAY")
+    array_mod.count = 2
+    array_mod.use_relative_offset = False
+    array_mod.use_constant_offset = True
+    array_mod.constant_offset_displace = (0.0, 4.0, 0.0)
+    bpy.context.view_layer.update()
+    mod_obj.pj_wall.kind = "MESH"
+    core_mod = viz.wall_from_object(mod_obj)
+    check(isinstance(core_mod, _MeshSurface), "modified mesh rebuilds a MeshSurface")
+    check(
+        approx(core_mod.arc_length, 8.0),
+        f"array-applied width {core_mod.arc_length:.3f} m (base mesh is 4 m)",
+    )
+    check(approx(core_mod.height, 2.5), f"array-applied height {core_mod.height:.3f} m")
+    bpy.data.objects.remove(mod_obj, do_unlink=True)
+    if mod_mesh_data.users == 0:
+        bpy.data.meshes.remove(mod_mesh_data)
+
     # Restore the curved wall so the array-planning sections run as before.
     result = bpy.ops.projection.create_curved_wall(
         radius=8.0, height=3.0, arc_deg=90.0, segments=48

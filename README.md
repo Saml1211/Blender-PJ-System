@@ -44,7 +44,7 @@ plus a headless Blender smoke workflow. Both run in CI.
 
 ### Experimental / limited
 
-- **Imported meshes are supported as frontal targets only (new in v0.4).** Tag any imported mesh object with *Set as Target Wall* and analysis ray-casts against it via a BVH. The mesh must be mostly frontal to the projectors: folds, overhangs, domes, and columns are rejected with an error naming the offending region rather than silently mangled. Modifier stacks are not applied.
+- **Imported meshes are supported as frontal targets only (new in v0.4).** Tag any imported mesh object with *Set as Target Wall* and analysis ray-casts against it via a BVH. The mesh must be mostly frontal to the projectors: folds, overhangs, domes, and columns are rejected with an error naming the offending region rather than silently mangled. Modifier stacks are applied — the evaluated mesh you see in the viewport is the surface analysis uses.
 - **Brightness is an estimate, not a photometric simulation.** Every report
   states its assumptions; they are also in `core/photometry.py`. In short:
   uniform intensity across the frustum, full rated lumens, a Lambertian screen,

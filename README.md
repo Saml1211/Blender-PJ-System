@@ -26,7 +26,7 @@ This is **v0.3**. The table below is the whole truth about what works.
 ### Implemented and tested
 
 | Capability | Notes |
-|---|---|
+| --- | --- |
 | Throw geometry | Analytic `TR = D/W`, image size, aspect, and field of view. |
 | Lens shift | Vertical and horizontal, with an explicit convention and a datasheet-percentage converter. Limits are checked and warned about. |
 | Curved-wall surfaces | Vertical-axis cylindrical wall segments; exact ray/cylinder intersection with arc and height bounds. |
@@ -104,7 +104,7 @@ Quit every Blender window and retry in a fresh session; rebuilding the zip does
 not repair that session-level lock error, though the archive must still pass
 the validation command below.
 
-3. Open the 3D viewport sidebar with <kbd>N</kbd> and select the
+1. Open the 3D viewport sidebar with <kbd>N</kbd> and select the
    **Projection** tab.
 
 For development, symlink instead of copying so edits take effect on reload.
@@ -138,7 +138,7 @@ test runs.
 **Projection ▸ 1. Projection Target ▸ Create Curved Wall**
 
 | Field | Value |
-|---|---|
+| --- | --- |
 | Radius | `8 m` |
 | Height | `3 m` |
 | Arc | `90°` |
@@ -152,7 +152,7 @@ the `PJ Targets` collection and set as the analysis target automatically.
 **Projection ▸ 2. Projectors**
 
 | Field | Value |
-|---|---|
+| --- | --- |
 | Throw Ratio | `1.2` |
 | Aspect | `16 : 9` |
 | Lumens | `7000` |
@@ -205,7 +205,7 @@ Both are true and both are decisions for you, not errors.
 ### Reading the overlay
 
 | Overlay | Meaning |
-|---|---|
+| --- | --- |
 | Coloured areas | Each projector's sampled image footprint |
 | White bands | Blend zones where two images overlap |
 | Near-black bands | Dark gaps no projector reaches (none in this example) |

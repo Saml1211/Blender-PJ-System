@@ -14,7 +14,7 @@ Defines the surface you are projecting onto. Nothing else works until a target
 is set.
 
 | Control | What it does |
-|---|---|
+| --- | --- |
 | **Create Curved Wall** | Builds a cylindrical wall segment and sets it as the target |
 | **Set as Target Wall** | Marks the active object as the target, if it is already a projection wall |
 | **Target Wall** | The object analysis runs against |
@@ -25,7 +25,7 @@ Adjust these in the operator's redo panel (bottom-left) immediately after
 running it.
 
 | Option | Meaning |
-|---|---|
+| --- | --- |
 | **Radius** | Radius of curvature. Larger is flatter — for a genuinely flat wall use *Create Flat Wall* instead |
 | **Height** | Height of the wall surface |
 | **Arc** | Angular sweep in degrees, centred on the +X axis |
@@ -44,7 +44,7 @@ of approximating with a huge radius. The face is a true plane, so footprint and
 incidence numbers carry no curvature error.
 
 | Option | Meaning |
-|---|---|
+| --- | --- |
 | **Width** | Length of the wall face |
 | **Height** | Height of the wall surface |
 | **Facing Yaw** | Rotation about Z; 0 means the face looks toward −X, so projectors sit at negative X |
@@ -69,7 +69,7 @@ blend zones and array planning work unchanged.
 The specification used when generating an array.
 
 | Field | Meaning |
-|---|---|
+| --- | --- |
 | **Throw Ratio** | `D / W` for the fitted lens |
 | **Aspect** | Image aspect, e.g. 16:9 |
 | **Lumens** | Rated output. Derate this yourself for eco mode or lamp age |
@@ -82,7 +82,7 @@ The specification used when generating an array.
 ### Mounting
 
 | Field | Meaning |
-|---|---|
+| --- | --- |
 | **Mount Mode** | *Level + Lens Shift* keeps the axis horizontal and shifts the lens down — no keystone, but needs shift range. *Tilt to Target* avoids lens shift and aims at the wall, but still raises a projection error when the requested image width is geometrically unreachable; successful tilted layouts introduce keystone |
 | **Mount Height** | Height of the mounting point, e.g. the ceiling |
 | **Image Centre Above Wall Base** | Local height above the wall's bottom edge where image centres should sit |
@@ -90,7 +90,7 @@ The specification used when generating an array.
 ### Array Layout
 
 | Field | Meaning |
-|---|---|
+| --- | --- |
 | **Projectors** | How many to spread across the wall |
 | **Overlap** | Fraction of each image shared with its neighbour for blending. 0.10–0.20 is the usual working range |
 | **Plan Projector Array** | Generates the projectors and writes the plan to the Report panel |
@@ -103,7 +103,7 @@ but leaves manually added projectors alone.
 ### Single projectors
 
 | Control | What it does |
-|---|---|
+| --- | --- |
 | **Add Projector** | Adds one at the 3D cursor, snapped to the mount height and aimed at the target wall |
 | **Aim at Wall** | Re-aims the selected projectors. With *Spread Selection* ticked, distributes them evenly along the arc |
 
@@ -126,7 +126,7 @@ because they are consequences of the geometry, not inputs.
 wall and builds the overlay.
 
 | Setting | Meaning |
-|---|---|
+| --- | --- |
 | **Footprint Samples** | Rays per axis across each image. Higher resolves curved or clipped edges more finely. 9–11 is a practical starting point |
 | **Grid Arc / Height** | Resolution of the coverage raster over the wall |
 | **Screen Gain** | Gain of the wall finish. 1.0 is matte white |
@@ -139,7 +139,7 @@ never touched.
 ### Reading the overlay
 
 | Overlay | Meaning |
-|---|---|
+| --- | --- |
 | Coloured areas | Each projector's image footprint on the wall |
 | White bands | Blend zones where two images overlap |
 | Near-black bands | Dark gaps no projector reaches |
@@ -178,7 +178,7 @@ The add-on organises everything into three collections and never writes
 outside them:
 
 | Collection | Contents | Deleted by the add-on? |
-|---|---|---|
+| --- | --- | --- |
 | `PJ Targets` | Projection walls | No |
 | `PJ Projectors` | Projector cameras | Only generated array members, on re-plan |
 | `PJ Analysis` | Footprints, blend bands, gap bands, frustums | Yes — rebuilt on every analysis |

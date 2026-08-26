@@ -62,11 +62,21 @@ def main() -> None:
     check(hasattr(bpy.types.Object, "pj_projector"), "Object.pj_projector registered")
 
     expected_ops = {
-        "create_curved_wall", "create_flat_wall", "set_target_wall", "add_projector",
-        "aim_at_wall", "plan_array", "analyze", "clear_analysis", "copy_report",
+        "create_curved_wall",
+        "create_flat_wall",
+        "set_target_wall",
+        "add_projector",
+        "aim_at_wall",
+        "plan_array",
+        "analyze",
+        "clear_analysis",
+        "copy_report",
     }
     actual_ops = {o for o in dir(bpy.ops.projection) if not o.startswith("_")}
-    check(expected_ops <= actual_ops, f"all operators registered (missing {expected_ops - actual_ops})")
+    check(
+        expected_ops <= actual_ops,
+        f"all operators registered (missing {expected_ops - actual_ops})",
+    )
 
     # -- 2. build the target ----------------------------------------------
     print("\n[2] create a curved wall")
@@ -141,23 +151,27 @@ def main() -> None:
 
     # -- 2b. a flat wall is a first-class surface --------------------------
     print("\n[2b] create a flat wall")
-    result = bpy.ops.projection.create_flat_wall(
-        width=4.0, height=2.5, yaw_deg=0.0, segments=24
-    )
+    result = bpy.ops.projection.create_flat_wall(width=4.0, height=2.5, yaw_deg=0.0, segments=24)
     check(result == {"FINISHED"}, "create_flat_wall finished")
     flat_obj = scene.pj.target_wall
     if flat_obj is None:
         check(False, "flat wall became the analysis target")
         return
     check(flat_obj.pj_wall.kind == "FLAT", "flat wall tagged kind FLAT")
-    check(len(flat_obj.data.polygons) == 24, f"flat wall mesh has 24 faces (got {len(flat_obj.data.polygons)})")
+    check(
+        len(flat_obj.data.polygons) == 24,
+        f"flat wall mesh has 24 faces (got {len(flat_obj.data.polygons)})",
+    )
     from blender_projection_system.core.surfaces import PlanarWall
 
     flat_core = viz.wall_from_object(flat_obj)
     check(isinstance(flat_core, PlanarWall), "wall_from_object rebuilds a PlanarWall")
     check(approx(flat_core.arc_length, 4.0), f"flat wall width {flat_core.arc_length:.3f} m")
     mid_face = flat_obj.data.polygons[len(flat_obj.data.polygons) // 2]
-    check(mid_face.normal.dot(mathutils.Vector((-1.0, 0.0, 0.0))) > 0.99, "flat wall winds toward projectors")
+    check(
+        mid_face.normal.dot(mathutils.Vector((-1.0, 0.0, 0.0))) > 0.99,
+        "flat wall winds toward projectors",
+    )
     # A projector aimed from -X lands on the planar surface end to end.
     # Mount near the image-centre height so LEVEL mode needs only modest
     # vertical lens shift (~43%) instead of pushing the image off the wall.
@@ -355,7 +369,9 @@ def main() -> None:
         approx(report.covered_fraction, operator_coverage, tol=0.0006),
         "operator coverage matches a direct production-core calculation",
     )
-    check(report.horizontal_coverage > 0.99, f"arc fully covered ({report.horizontal_coverage:.3f})")
+    check(
+        report.horizontal_coverage > 0.99, f"arc fully covered ({report.horizontal_coverage:.3f})"
+    )
     check(report.gaps == [], f"no dark bands (got {len(report.gaps)})")
     check(len(report.blend_zones) == 2, f"two blend zones (got {len(report.blend_zones)})")
     check(report.max_overlap_count == 2, f"no triple overlap (max {report.max_overlap_count})")

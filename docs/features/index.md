@@ -50,6 +50,7 @@ surface normal and incidence angle. Vertical rays, rays that miss, and rays
 that only hit behind the origin all return `None`.
 
 **Limits:**
+
 - Cylinders and planes only. Flat walls are a first-class `PlanarWall` surface
   (`projection.create_flat_wall`); domes and arbitrary meshes are unsupported.
 - Rotated walls and walls with unapplied object scale are rejected. Translation
@@ -98,7 +99,7 @@ is direct.
 Two mounting modes:
 
 | Mode | Behaviour | Trade-off |
-|---|---|---|
+| --- | --- | --- |
 | **Level + Lens Shift** | Optical axis stays horizontal; lens shift moves the image down. | No keystone, even focus. Warns when the required shift exceeds the configured lens limit. |
 | **Tilt to Target** | Projector tilts to aim at the target point. | Avoids lens shift, but can be geometrically infeasible; successful layouts introduce keystone. |
 

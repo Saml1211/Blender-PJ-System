@@ -70,7 +70,9 @@ def get_collection(context, name: str) -> bpy.types.Collection:
         None,
     )
     if coll is None:
-        preferred = name if bpy.data.collections.get(name) is None else f"{name} (Projection Planner)"
+        preferred = (
+            name if bpy.data.collections.get(name) is None else f"{name} (Projection Planner)"
+        )
         coll = bpy.data.collections.new(preferred)
         coll[OWNER_KEY] = OWNER_ID
         coll[ROLE_KEY] = name
@@ -127,8 +129,7 @@ def _owned_material(
         (
             candidate
             for candidate in bpy.data.materials
-            if candidate.get(OWNER_KEY) == OWNER_ID
-            and candidate.get(MATERIAL_ROLE_KEY) == role
+            if candidate.get(OWNER_KEY) == OWNER_ID and candidate.get(MATERIAL_ROLE_KEY) == role
         ),
         None,
     )
@@ -437,14 +438,11 @@ def build_frustum_object(
         landed = footprint_corners_world(footprint)
         if len(landed) < 2:
             return None
-        distance = max(
-            vec_length(sub_vec(c, footprint.pose.origin)) for c in landed
-        )
+        distance = max(vec_length(sub_vec(c, footprint.pose.origin)) for c in landed)
 
     pose = footprint.pose
     corners = [
-        pose.local_to_world_point(c)
-        for c in frustum_corners_local(distance, footprint.spec)
+        pose.local_to_world_point(c) for c in frustum_corners_local(distance, footprint.spec)
     ]
 
     origin = pose.origin

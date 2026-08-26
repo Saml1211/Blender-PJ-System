@@ -100,9 +100,7 @@ def _scene_spec(scene) -> ProjectorSpec:
 
 def _projectors_in_scene(context) -> list[bpy.types.Object]:
     return [
-        obj
-        for obj in context.scene.objects
-        if obj.pj_projector.is_projector and obj.visible_get()
+        obj for obj in context.scene.objects if obj.pj_projector.is_projector and obj.visible_get()
     ]
 
 
@@ -119,14 +117,19 @@ class PJ_OT_create_curved_wall(Operator):
     bl_options = {"REGISTER", "UNDO"}
 
     radius: FloatProperty(
-        name="Radius", default=8.0, min=0.05, soft_max=100.0, unit="LENGTH",
+        name="Radius",
+        default=8.0,
+        min=0.05,
+        soft_max=100.0,
+        unit="LENGTH",
         description="Radius of curvature. Larger is flatter",
     )
-    height: FloatProperty(
-        name="Height", default=3.0, min=0.05, soft_max=30.0, unit="LENGTH"
-    )
+    height: FloatProperty(name="Height", default=3.0, min=0.05, soft_max=30.0, unit="LENGTH")
     arc_deg: FloatProperty(
-        name="Arc", default=90.0, min=1.0, max=350.0,
+        name="Arc",
+        default=90.0,
+        min=1.0,
+        max=350.0,
         description="Angular sweep of the wall in degrees, centred on +X",
     )
     segments: IntProperty(name="Segments", default=48, min=2, max=512)
@@ -136,7 +139,11 @@ class PJ_OT_create_curved_wall(Operator):
         description="Projectors sit inside the arc, which is the usual case",
     )
     base_height: FloatProperty(
-        name="Base Height", default=0.0, soft_min=-10.0, soft_max=10.0, unit="LENGTH",
+        name="Base Height",
+        default=0.0,
+        soft_min=-10.0,
+        soft_max=10.0,
+        unit="LENGTH",
         description="Height of the bottom edge of the wall",
     )
 
@@ -196,14 +203,19 @@ class PJ_OT_create_flat_wall(Operator):
     bl_options = {"REGISTER", "UNDO"}
 
     width: FloatProperty(
-        name="Width", default=4.0, min=0.05, soft_max=100.0, unit="LENGTH",
+        name="Width",
+        default=4.0,
+        min=0.05,
+        soft_max=100.0,
+        unit="LENGTH",
         description="Length of the wall face",
     )
-    height: FloatProperty(
-        name="Height", default=3.0, min=0.05, soft_max=30.0, unit="LENGTH"
-    )
+    height: FloatProperty(name="Height", default=3.0, min=0.05, soft_max=30.0, unit="LENGTH")
     yaw_deg: FloatProperty(
-        name="Facing Yaw", default=0.0, min=-180.0, max=180.0,
+        name="Facing Yaw",
+        default=0.0,
+        min=-180.0,
+        max=180.0,
         description=(
             "Rotation of the wall about Z; 0 means the face looks toward -X, "
             "so projectors sit at negative X"
@@ -211,7 +223,11 @@ class PJ_OT_create_flat_wall(Operator):
     )
     segments: IntProperty(name="Segments", default=24, min=2, max=512)
     base_height: FloatProperty(
-        name="Base Height", default=0.0, soft_min=-10.0, soft_max=10.0, unit="LENGTH",
+        name="Base Height",
+        default=0.0,
+        soft_min=-10.0,
+        soft_max=10.0,
+        unit="LENGTH",
         description="Height of the bottom edge of the wall",
     )
 
@@ -253,9 +269,7 @@ class PJ_OT_create_flat_wall(Operator):
         obj.select_set(True)
         context.view_layer.objects.active = obj
 
-        facing_note = (
-            "toward -X" if abs(self.yaw_deg) < 1e-9 else f"at {self.yaw_deg:.0f} deg yaw"
-        )
+        facing_note = "toward -X" if abs(self.yaw_deg) < 1e-9 else f"at {self.yaw_deg:.0f} deg yaw"
         self.report(
             {"INFO"},
             f"Created {wall.arc_length:.2f} m x {self.height:.2f} m flat wall "
@@ -492,9 +506,7 @@ class PJ_OT_plan_array(Operator):
             obj = bpy.data.objects.new(placement.name, cam_data)
             obj[viz.OWNER_KEY] = viz.OWNER_ID
             obj["pj_generated"] = True
-            obj.matrix_world = viz.pose_matrix(
-                placement.position, placement.pose.basis_columns()
-            )
+            obj.matrix_world = viz.pose_matrix(placement.position, placement.pose.basis_columns())
             viz.apply_spec_to_object(obj, placement.spec, placement.mode)
             viz.configure_camera(obj, placement.spec, placement.throw_distance)
             viz.store_placement_results(obj, placement)
@@ -617,9 +629,7 @@ class PJ_OT_analyze(Operator):
                 f"shift V={props.lens_shift_v * 100:+.1f}% H={props.lens_shift_h * 100:+.1f}%"
             )
         if report.brightness is not None:
-            lines.append(
-                "Brightness assumptions: " + "; ".join(report.brightness.assumptions)
-            )
+            lines.append("Brightness assumptions: " + "; ".join(report.brightness.assumptions))
         _set_report(scene, lines, warnings)
 
         if self.visualize:

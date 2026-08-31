@@ -131,9 +131,7 @@ def main() -> None:
     check(viz.sync_generated_wall_mesh(wall), "procedural wall migration is idempotent")
     check(viz.sync_generated_wall_mesh(wall), "repeated procedural wall migration succeeds")
     owned_modifiers = [
-        modifier
-        for modifier in wall.modifiers
-        if modifier.get(viz.OWNER_KEY) == viz.OWNER_ID
+        modifier for modifier in wall.modifiers if modifier.get(viz.OWNER_KEY) == viz.OWNER_ID
     ]
     check(len(owned_modifiers) == 1, "one owned Geometry Nodes modifier is attached")
 
@@ -416,11 +414,7 @@ def main() -> None:
     check(live.flush_scene_sync(scene), "queued live refresh succeeds")
 
     live_projectors = sorted(
-        (
-            obj
-            for obj in scene.objects
-            if obj.get("pj_object_role") == live.ARRAY_OBJECT_ROLE
-        ),
+        (obj for obj in scene.objects if obj.get("pj_object_role") == live.ARRAY_OBJECT_ROLE),
         key=lambda obj: obj.name,
     )
     check(len(live_projectors) == 3, "target controls create the live three-projector array")
@@ -435,11 +429,7 @@ def main() -> None:
     check(live.pending_scope(scene) == live.SyncScope.ARRAY, "array edit queues array scope")
     check(live.flush_scene_sync(scene), "live array edit converges")
     live_projectors = sorted(
-        (
-            obj
-            for obj in scene.objects
-            if obj.get("pj_object_role") == live.ARRAY_OBJECT_ROLE
-        ),
+        (obj for obj in scene.objects if obj.get("pj_object_role") == live.ARRAY_OBJECT_ROLE),
         key=lambda obj: obj.name,
     )
     check(len(live_projectors) == 2, "live count edit removes one owned camera")
@@ -718,8 +708,7 @@ def main() -> None:
     groups_before = [
         group
         for group in bpy.data.node_groups
-        if group.get(viz.OWNER_KEY) == viz.OWNER_ID
-        and group.get("pj_node_role") == pg.NODE_ROLE
+        if group.get(viz.OWNER_KEY) == viz.OWNER_ID and group.get("pj_node_role") == pg.NODE_ROLE
     ]
     live_wall_name = live_wall.name
     live.request_scene_sync(scene, live.SyncScope.ANALYSIS, delay=60.0)
@@ -739,8 +728,7 @@ def main() -> None:
     groups_after = [
         group
         for group in bpy.data.node_groups
-        if group.get(viz.OWNER_KEY) == viz.OWNER_ID
-        and group.get("pj_node_role") == pg.NODE_ROLE
+        if group.get(viz.OWNER_KEY) == viz.OWNER_ID and group.get("pj_node_role") == pg.NODE_ROLE
     ]
     check(len(groups_after) == len(groups_before) == 1, "reload does not duplicate node groups")
     owned_modifiers = [

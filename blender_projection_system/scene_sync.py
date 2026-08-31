@@ -142,10 +142,7 @@ def _owned_array_projectors(scene: bpy.types.Scene) -> list[bpy.types.Object]:
             for obj in scene.objects
             if obj.pj_projector.is_projector
             and obj.get(OWNER_KEY) == OWNER_ID
-            and (
-                obj.get(OBJECT_ROLE_KEY) == ARRAY_OBJECT_ROLE
-                or bool(obj.get("pj_generated"))
-            )
+            and (obj.get(OBJECT_ROLE_KEY) == ARRAY_OBJECT_ROLE or bool(obj.get("pj_generated")))
         ),
         key=lambda obj: obj.name,
     )
@@ -197,9 +194,7 @@ def sync_array(scene: bpy.types.Scene) -> ArraySyncResult:
             obj[OWNER_KEY] = OWNER_ID
             obj[OBJECT_ROLE_KEY] = ARRAY_OBJECT_ROLE
             obj["pj_generated"] = True  # backward-compatible ownership marker
-            obj.matrix_world = viz.pose_matrix(
-                placement.position, placement.pose.basis_columns()
-            )
+            obj.matrix_world = viz.pose_matrix(placement.position, placement.pose.basis_columns())
             viz.apply_spec_to_object(obj, placement.spec, placement.mode)
             viz.configure_camera(obj, placement.spec, placement.throw_distance)
             viz.store_placement_results(obj, placement)
@@ -240,9 +235,7 @@ def _analysis_inputs(scene: bpy.types.Scene):
         spec = viz.spec_from_object(obj)
         pose = pose_from_matrix(obj.matrix_world)
         try:
-            footprint = compute_footprint(
-                pose, spec, wall, samples=pj.samples, name=obj.name
-            )
+            footprint = compute_footprint(pose, spec, wall, samples=pj.samples, name=obj.name)
         except ProjectionError as exc:
             raise ProjectionError(f"{obj.name}: {exc}") from exc
         footprints.append((obj, spec, footprint))
@@ -362,11 +355,7 @@ def _run_sync(scene: bpy.types.Scene, scope: SyncScope) -> bool:
 def _flush_pending() -> float | None:
     global _timer_registered
     now = time.monotonic()
-    ready = [
-        (name, scope)
-        for name, (scope, deadline) in _pending.items()
-        if deadline <= now
-    ]
+    ready = [(name, scope) for name, (scope, deadline) in _pending.items() if deadline <= now]
     for name, scope in ready:
         _pending.pop(name, None)
         scene = bpy.data.scenes.get(name)

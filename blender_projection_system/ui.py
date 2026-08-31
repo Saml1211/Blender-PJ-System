@@ -54,7 +54,9 @@ class PJ_PT_target(_Base):
 
         props = wall_obj.pj_wall
         box = layout.box()
-        box.label(text=wall_obj.name, icon="MESH_PLANE" if props.kind == "FLAT" else "MESH_CYLINDER")
+        box.label(
+            text=wall_obj.name, icon="MESH_PLANE" if props.kind == "FLAT" else "MESH_CYLINDER"
+        )
         col = box.column(align=True)
         if props.kind == "FLAT":
             col.prop(props, "width")
@@ -275,9 +277,7 @@ class PJ_PT_calculator(_Base):
             image = ImageSize(pj.calc_width, height)
             box = layout.box()
             box.label(text=f"Image height: {height:.3f} m")
-            box.label(
-                text=f"Diagonal: {image.diagonal:.3f} m ({image.diagonal * 39.3701:.0f} in)"
-            )
+            box.label(text=f"Diagonal: {image.diagonal:.3f} m ({image.diagonal * 39.3701:.0f} in)")
             if pj.lumens > 0:
                 spec = ProjectorSpec(
                     throw_ratio=pj.calc_throw_ratio,
@@ -287,9 +287,7 @@ class PJ_PT_calculator(_Base):
                 )
                 lux = nominal_screen_illuminance(spec, image.area)
                 box.label(text=f"Mean illuminance: {lux:.0f} lux")
-                box.label(
-                    text=f"Mean luminance: {luminance_nits(lux, pj.screen_gain):.0f} nits"
-                )
+                box.label(text=f"Mean luminance: {luminance_nits(lux, pj.screen_gain):.0f} nits")
             box.label(text="Flat screen, no ambient light.", icon="INFO")
 
 

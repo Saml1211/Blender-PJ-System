@@ -123,12 +123,8 @@ def _build_wall_node_group() -> bpy.types.NodeTree:
         "yaw_deg": _new_input(tree, "yaw_deg", minimum=-360.0, maximum=360.0),
         "radius": _new_input(tree, "radius", minimum=0.01),
         "height": _new_input(tree, "height", minimum=0.01),
-        "arc_start_deg": _new_input(
-            tree, "arc_start_deg", minimum=-360.0, maximum=360.0
-        ),
-        "arc_end_deg": _new_input(
-            tree, "arc_end_deg", minimum=-360.0, maximum=360.0
-        ),
+        "arc_start_deg": _new_input(tree, "arc_start_deg", minimum=-360.0, maximum=360.0),
+        "arc_end_deg": _new_input(tree, "arc_end_deg", minimum=-360.0, maximum=360.0),
         "segments": _new_input(tree, "segments", minimum=2, maximum=512),
         "concave": _new_input(tree, "concave"),
     }
@@ -201,9 +197,7 @@ def _build_wall_node_group() -> bpy.types.NodeTree:
     links.new(_node_output(profile, "Curve"), _node_input(flat_mesh, "Profile Curve"))
 
     degrees_to_radians = math.pi / 180.0
-    yaw_radians = _math(
-        nodes, "MULTIPLY", "Yaw Radians", constant=degrees_to_radians
-    )
+    yaw_radians = _math(nodes, "MULTIPLY", "Yaw Radians", constant=degrees_to_radians)
     yaw_radians.location = (-260.0, -180.0)
     links.new(source("yaw_deg"), yaw_radians.inputs[0])
     yaw_rotation = _combine_xyz(nodes, "Yaw Rotation")
@@ -218,18 +212,14 @@ def _build_wall_node_group() -> bpy.types.NodeTree:
 
     # Curved branch: the core angles are degrees in RNA and radians in maths;
     # convert in nodes so the driver expressions remain simple property reads.
-    start_radians = _math(
-        nodes, "MULTIPLY", "Arc Start Radians", constant=degrees_to_radians
-    )
+    start_radians = _math(nodes, "MULTIPLY", "Arc Start Radians", constant=degrees_to_radians)
     start_radians.location = (-900.0, 700.0)
     links.new(source("arc_start_deg"), start_radians.inputs[0])
     sweep_degrees = _math(nodes, "SUBTRACT", "Arc Sweep Degrees")
     sweep_degrees.location = (-900.0, 560.0)
     links.new(source("arc_end_deg"), sweep_degrees.inputs[0])
     links.new(source("arc_start_deg"), sweep_degrees.inputs[1])
-    sweep_radians = _math(
-        nodes, "MULTIPLY", "Arc Sweep Radians", constant=degrees_to_radians
-    )
+    sweep_radians = _math(nodes, "MULTIPLY", "Arc Sweep Radians", constant=degrees_to_radians)
     sweep_radians.location = (-700.0, 560.0)
     links.new(sweep_degrees.outputs[0], sweep_radians.inputs[0])
 
@@ -332,10 +322,7 @@ def ensure_wall_modifier(obj: bpy.types.Object) -> bpy.types.NodesModifier:
         for modifier in obj.modifiers
         if modifier.type == "NODES"
         and (
-            (
-                modifier.get(OWNER_KEY) == OWNER_ID
-                and modifier.get(NODE_ROLE_KEY) == NODE_ROLE
-            )
+            (modifier.get(OWNER_KEY) == OWNER_ID and modifier.get(NODE_ROLE_KEY) == NODE_ROLE)
             or (
                 modifier.node_group is not None
                 and modifier.node_group.get(OWNER_KEY) == OWNER_ID

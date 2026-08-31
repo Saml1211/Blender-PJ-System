@@ -221,8 +221,7 @@ def _mesh_wall_from_object(obj: bpy.types.Object) -> MeshSurface:
 
     translation = obj.matrix_world.translation
     world_vertices = [
-        (x + translation.x, y + translation.y, z + translation.z)
-        for x, y, z in vertices
+        (x + translation.x, y + translation.y, z + translation.z) for x, y, z in vertices
     ]
     bvh = BVHTree.FromPolygons(world_vertices, tris, all_triangles=True)
     return MeshSurface.from_triangles(

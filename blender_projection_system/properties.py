@@ -311,12 +311,8 @@ class PJ_PG_Projector(PropertyGroup):
         precision=3,
         update=_update_projector,
     )
-    aspect_w: IntProperty(
-        name="Aspect W", default=16, min=1, max=256, update=_update_projector
-    )
-    aspect_h: IntProperty(
-        name="Aspect H", default=9, min=1, max=256, update=_update_projector
-    )
+    aspect_w: IntProperty(name="Aspect W", default=16, min=1, max=256, update=_update_projector)
+    aspect_h: IntProperty(name="Aspect H", default=9, min=1, max=256, update=_update_projector)
     lumens: FloatProperty(
         name="Lumens",
         description="Rated light output. Derate it yourself for eco mode or lamp age",
@@ -442,12 +438,8 @@ class PJ_PG_Scene(PropertyGroup):
         precision=3,
         update=_update_array,
     )
-    aspect_w: IntProperty(
-        name="Aspect W", default=16, min=1, max=256, update=_update_array
-    )
-    aspect_h: IntProperty(
-        name="Aspect H", default=9, min=1, max=256, update=_update_array
-    )
+    aspect_w: IntProperty(name="Aspect W", default=16, min=1, max=256, update=_update_array)
+    aspect_h: IntProperty(name="Aspect H", default=9, min=1, max=256, update=_update_array)
     lumens: FloatProperty(
         name="Lumens", default=7000.0, min=0.0, soft_max=50000.0, update=_update_array
     )

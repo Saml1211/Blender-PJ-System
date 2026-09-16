@@ -103,6 +103,21 @@ def _is_wall_object(self, obj):
     return bool(getattr(obj, "pj_wall", None) and obj.pj_wall.is_wall)
 
 
+def _is_occluder_mesh(self, obj):
+    """Poll for the obstacle picker: meshes that are not the target wall.
+
+    The target wall is excluded here as well as in the operators because a
+    wall (or anything tagged as one) included in its own occluder set would
+    shadow every sample point on it - a silent, plausible-looking zero
+    coverage result rather than an error (ADR 0002).
+    """
+    return bool(
+        obj
+        and obj.type == "MESH"
+        and not (getattr(obj, "pj_wall", None) and obj.pj_wall.is_wall)
+    )
+
+
 def _request_scope(self, context, scope_name: str) -> None:
     from .scene_sync import SyncScope, request_scene_sync
 
@@ -375,7 +390,24 @@ class PJ_PG_Projector(PropertyGroup):
     calc_hit_ratio: FloatProperty(name="On Surface", default=0.0, min=0.0, max=1.0)
     calc_max_incidence_deg: FloatProperty(name="Worst Incidence", default=0.0)
     calc_mean_nits: FloatProperty(name="Mean Luminance", default=0.0)
+    calc_occluded_cells: IntProperty(name="Occluded Cells", default=0)
+    calc_occluded_ratio: FloatProperty(
+        name="Occluded Ratio", default=0.0, min=0.0, max=1.0
+    )
     has_result: BoolProperty(name="Has Result", default=False)
+
+
+class PJ_PG_Occluder(PropertyGroup):
+    """One user-selected obstacle object standing in the light path."""
+
+    name: StringProperty(name="Name", default="")
+    object: PointerProperty(
+        name="Object",
+        description="Mesh object that can block projector light",
+        type=Object,
+        poll=_is_occluder_mesh,
+        update=_update_analysis,
+    )
 
 
 class PJ_PG_Scene(PropertyGroup):
@@ -509,6 +541,26 @@ class PJ_PG_Scene(PropertyGroup):
         update=_update_analysis,
     )
 
+    # -- occlusion (obstacles in the light path) ----------------------------
+    occluders: CollectionProperty(
+        type=PJ_PG_Occluder,
+        name="Obstacles",
+        description="Mesh objects that may block projector light",
+    )
+    occluder_index: IntProperty(name="Active Obstacle Index", default=0)
+    occluder_collection: PointerProperty(
+        name="Obstacle Collection",
+        description="Collection whose mesh objects are all treated as obstacles",
+        type=bpy.types.Collection,
+        update=_update_analysis,
+    )
+    show_occlusion_overlay: BoolProperty(
+        name="Show Shadow Overlay",
+        description="Draw red overlay where light is blocked by obstacles",
+        default=True,
+        update=_update_analysis,
+    )
+
     # -- lens scratchpad ----------------------------------------------------
     calc_distance: FloatProperty(
         name="Distance",
@@ -547,6 +599,7 @@ class PJ_PG_Scene(PropertyGroup):
 _CLASSES = (
     PJ_PG_ReportLine,
     PJ_PG_Wall,
+    PJ_PG_Occluder,
     PJ_PG_Projector,
     PJ_PG_Scene,
 )

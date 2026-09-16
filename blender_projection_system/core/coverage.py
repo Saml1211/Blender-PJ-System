@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 
 from .errors import ProjectionError
 from .footprint import Footprint
+from .occlusion import RAY_TOLERANCE, OcclusionCaster
 from .photometry import (
     BlendModel,
     BrightnessReport,
@@ -27,7 +28,7 @@ from .photometry import (
     summarize_brightness,
 )
 from .surfaces import Surface
-from .vectors import Vec3, dot, normalize, sub
+from .vectors import Vec3, distance, dot, normalize, sub
 
 DEFAULT_GRID_S = 80
 DEFAULT_GRID_Z = 24
@@ -46,6 +47,27 @@ class Interval:
         lo = max(self.start, other.start)
         hi = min(self.end, other.end)
         return Interval(lo, hi) if hi > lo else None
+
+
+@dataclass
+class ProjectorOcclusion:
+    """Occlusion tally for one projector over the coverage raster.
+
+    ``total_potential_cells`` counts the raster cells the projector's image
+    covers before occlusion is considered; ``occluded_cells`` counts those
+    whose line of sight is blocked. A projector absent from the report's
+    :attr:`CoverageReport.projector_occlusions` was never occlusion-tested.
+    """
+
+    projector_name: str
+    occluded_cells: int = 0
+    total_potential_cells: int = 0
+
+    @property
+    def occluded_fraction(self) -> float:
+        return (
+            self.occluded_cells / self.total_potential_cells if self.total_potential_cells else 0.0
+        )
 
 
 @dataclass(frozen=True)
@@ -104,6 +126,13 @@ class CoverageReport:
     brightness: BrightnessReport | None = None
     blend_model: BlendModel = BlendModel.RAW
     """How overlapping illuminance was combined - see :class:`BlendModel`."""
+    projector_occlusions: dict[str, ProjectorOcclusion] = field(default_factory=dict)
+    """Per-projector occlusion tallies; empty when no occluders are in play."""
+    occluded_cells: list[CoverageCell] = field(default_factory=list)
+    """Cells where at least one covering projector's line of sight is blocked."""
+    shadowed_cells: list[CoverageCell] = field(default_factory=list)
+    """Cells whose every covering projector is blocked - counted as covered by
+    geometry but dark in reality. Always a subset of :attr:`occluded_cells`."""
     warnings: list[str] = field(default_factory=list)
 
     @property
@@ -163,6 +192,7 @@ def analyze_coverage(
     grid_z: int = DEFAULT_GRID_Z,
     screen_gain: float = 1.0,
     blend_model: BlendModel = BlendModel.RAW,
+    occlusion_caster: OcclusionCaster | None = None,
 ) -> CoverageReport:
     """Rasterised coverage, gap, overlap and brightness analysis for a wall.
 
@@ -172,6 +202,14 @@ def analyze_coverage(
     (:attr:`BlendModel.LINEAR_RAMP`). The ramp applies only where exactly two
     images overlap; triple overlaps stay additive because they are flagged as
     placement errors rather than blends.
+
+    ``occlusion_caster`` optionally supplies line-of-sight checks (see
+    :mod:`.occlusion`). When given, every projector-to-cell ray is tested:
+    blocked rays contribute no light, affected cells are tallied per
+    projector and listed in :attr:`CoverageReport.occluded_cells`, and cells
+    left dark by occlusion are listed in :attr:`CoverageReport.shadowed_cells`
+    and warned about loudly. With ``None`` (the default) nothing is occluded
+    and the report is identical to the unoccluded analysis.
     """
     if grid_s < 1 or grid_z < 1:
         raise ProjectionError("coverage grid dimensions must be at least 1")
@@ -190,26 +228,51 @@ def analyze_coverage(
     usable = [fp for fp in footprints if fp.hit_ratio > 0.0]
     if not usable:
         report.gaps = [Interval(0.0, wall.arc_length)]
-        report.warnings.append(
-            "no projector footprint lands on the wall; coverage is zero"
-        )
+        report.warnings.append("no projector footprint lands on the wall; coverage is zero")
         return report
 
     lux_grid: list[float] = []
     uncovered_by_row: list[list[bool]] = [[False] * grid_s for _ in range(grid_z)]
     covered_z: list[float] = []
+    occlusion_by: dict[str, ProjectorOcclusion] = (
+        {fp.name: ProjectorOcclusion(projector_name=fp.name) for fp in usable}
+        if occlusion_caster is not None
+        else {}
+    )
 
     for i_s, iz, s, z in _cell_centers(wall, grid_s, grid_z):
         point = wall.point_at(s, z)
         normal = wall.normal_at_s(s)
         contributions: list[tuple[Footprint, float]] = []
+        potential = 0
+        cell_occluded = False
         for fp in usable:
             # Back-project the cell through each lens rather than testing the
             # sampled outline: a footprint clipped by the wall edge has a
             # boundary polygon that closes across the missing samples.
             if not fp.covers(point):
                 continue
+            potential += 1
+            if occlusion_caster is not None:
+                tally = occlusion_by[fp.name]
+                tally.total_potential_cells += 1
+                direction = normalize(sub(point, fp.pose.origin))
+                # Trim a tolerance off the reach so a caster built from the
+                # target wall's own mesh never occludes its sample point.
+                reach = max(0.0, distance(fp.pose.origin, point) - RAY_TOLERANCE)
+                if occlusion_caster(fp.pose.origin, direction, reach):
+                    tally.occluded_cells += 1
+                    cell_occluded = True
+                    continue
             contributions.append((fp, _cell_illuminance(fp, point, normal)))
+        if cell_occluded:
+            report.occluded_cells.append(
+                CoverageCell(s - 0.5 * ds, s + 0.5 * ds, z - 0.5 * dz, z + 0.5 * dz)
+            )
+        if potential and not contributions:
+            report.shadowed_cells.append(
+                CoverageCell(s - 0.5 * ds, s + 0.5 * ds, z - 0.5 * dz, z + 0.5 * dz)
+            )
         count = len(contributions)
         if count:
             lux = _combined_illuminance(contributions, s, wall, blend_model)
@@ -226,12 +289,9 @@ def analyze_coverage(
     if covered_z:
         report.covered_z_min = min(covered_z) - dz * 0.5
         report.covered_z_max = max(covered_z) + dz * 0.5
-    report.projector_spans = [
-        (fp.name, Interval(fp.s_min, fp.s_max)) for fp in usable
-    ]
-    report.blend_zones = compute_blend_zones(
-        usable, wall=wall, grid_s=grid_s, grid_z=grid_z
-    )
+    report.projector_spans = [(fp.name, Interval(fp.s_min, fp.s_max)) for fp in usable]
+    report.projector_occlusions = occlusion_by
+    report.blend_zones = compute_blend_zones(usable, wall=wall, grid_s=grid_s, grid_z=grid_z)
 
     if lux_grid:
         report.brightness = summarize_brightness(
@@ -319,9 +379,7 @@ def _gap_intervals(
     than the wall leaves unlit strips at the top and bottom of every column,
     and calling those a gap would mark a perfectly good design as failing.
     """
-    fully_dark = [
-        all(uncovered[iz][i_s] for iz in range(grid_z)) for i_s in range(grid_s)
-    ]
+    fully_dark = [all(uncovered[iz][i_s] for iz in range(grid_z)) for i_s in range(grid_s)]
     out: list[Interval] = []
     run_start: int | None = None
     for i in range(grid_s):
@@ -388,7 +446,8 @@ def compute_blend_zones(
             for i_s in range(grid_s):
                 s = (i_s + 0.5) * ds
                 s_eval = (
-                    s + round((0.5 * (common.start + common.end) - s) / circumference) * circumference
+                    s
+                    + round((0.5 * (common.start + common.end) - s) / circumference) * circumference
                     if full_circle
                     else s
                 )
@@ -417,8 +476,7 @@ def compute_blend_zones(
                 if run_start is None:
                     run_start = column
                 elif previous is not None and (
-                    cells_by_column[column][0].s_start
-                    - cells_by_column[previous][0].s_start
+                    cells_by_column[column][0].s_start - cells_by_column[previous][0].s_start
                     > ds * 1.5
                 ):
                     start_s = min(cell.s_start for cell in cells_by_column[run_start])
@@ -496,6 +554,13 @@ def _coverage_warnings(report: CoverageReport) -> list[str]:
                 f"{frac * 100:.0f}% of the image width; you are paying for pixels "
                 "you cannot use"
             )
+    occluded = [o for o in report.projector_occlusions.values() if o.occluded_cells > 0]
+    for occ in occluded:
+        out.append(
+            f"{occ.projector_name}: {occ.occluded_cells} of {occ.total_potential_cells} "
+            f"image cells ({occ.occluded_fraction * 100:.1f}%) are occluded by an "
+            "obstacle - those cells get no light from it"
+        )
     return out
 
 
@@ -512,7 +577,9 @@ def format_report(report: CoverageReport) -> list[str]:
         f"max {report.max_overlap_count} projector(s) on one spot",
     ]
     for name, span in report.projector_spans:
-        lines.append(f"  {name}: arc {span.start:.2f} - {span.end:.2f} m ({span.length:.2f} m wide)")
+        lines.append(
+            f"  {name}: arc {span.start:.2f} - {span.end:.2f} m ({span.length:.2f} m wide)"
+        )
     for zone in report.blend_zones:
         lines.append(
             f"  blend {zone.left} | {zone.right}: {zone.width:.2f} m "
@@ -521,6 +588,14 @@ def format_report(report: CoverageReport) -> list[str]:
         )
     for gap in report.gaps:
         lines.append(f"  GAP: arc {gap.start:.2f} - {gap.end:.2f} m ({gap.length:.2f} m)")
+    occluded = [o for o in report.projector_occlusions.values() if o.occluded_cells > 0]
+    if occluded:
+        lines.append(f"Occlusion: {len(report.occluded_cells)} cell(s) shadowed by obstacles")
+        for occ in occluded:
+            lines.append(
+                f"  {occ.projector_name}: {occ.occluded_cells}/{occ.total_potential_cells} "
+                f"of its image cells ({occ.occluded_fraction * 100:.1f}%) occluded"
+            )
     if report.brightness:
         b = report.brightness
         lines.append(
@@ -529,8 +604,5 @@ def format_report(report: CoverageReport) -> list[str]:
             f"uniformity {b.uniformity:.2f}"
         )
     if report.blend_model is BlendModel.LINEAR_RAMP:
-        lines.append(
-            "Overlap luminance uses a linear-ramp blend model; see brightness "
-            "assumptions"
-        )
+        lines.append("Overlap luminance uses a linear-ramp blend model; see brightness assumptions")
     return lines

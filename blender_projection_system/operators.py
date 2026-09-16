@@ -24,6 +24,7 @@ from .core.errors import ProjectionError
 from .core.pose import level_pose, look_at
 from .core.surfaces import CylindricalWall, PlanarWall, Surface
 from .core.throw import ProjectorSpec, image_size, required_lens_shift_v
+from .scene_ids import OWNER_ID, OWNER_KEY
 from .scene_sync import (
     SyncScope,
     request_scene_sync,
@@ -579,6 +580,90 @@ class PJ_OT_copy_report(Operator):
         return {"FINISHED"}
 
 
+class PJ_OT_add_occluder(Operator):
+    """Add selected mesh objects to the list of obstacles considered in the
+    line-of-sight check"""
+
+    bl_idname = "projection.add_occluder"
+    bl_label = "Add Obstacle"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "OBJECT"
+
+    def execute(self, context):
+        pj = context.scene.pj
+        wall = pj.target_wall
+        existing = {item.object for item in pj.occluders if item.object is not None}
+        candidates = [obj for obj in context.selected_objects if obj.type == "MESH"]
+        if not candidates and context.active_object is not None:
+            active = context.active_object
+            if active.type == "MESH":
+                candidates = [active]
+
+        added = 0
+        for obj in candidates:
+            # The wall itself, projectors and add-on-owned generated objects
+            # are never obstacles: the wall would shadow its own samples, and
+            # the rest is derived state that moves with the design.
+            if obj is wall:
+                continue
+            if getattr(obj, "pj_wall", None) and obj.pj_wall.is_wall:
+                continue
+            if getattr(obj, "pj_projector", None) and obj.pj_projector.is_projector:
+                continue
+            if obj.get(OWNER_KEY) == OWNER_ID:
+                continue
+            if obj in existing:
+                continue
+            item = pj.occluders.add()
+            item.object = obj
+            item.name = obj.name
+            existing.add(obj)
+            added += 1
+
+        if not added:
+            self.report({"WARNING"}, "No usable mesh obstacles selected")
+            return {"CANCELLED"}
+        request_scene_sync(context.scene, SyncScope.ANALYSIS)
+        self.report({"INFO"}, f"Added {added} obstacle(s)")
+        return {"FINISHED"}
+
+
+class PJ_OT_remove_occluder(Operator):
+    """Remove the highlighted object from the obstacle list"""
+
+    bl_idname = "projection.remove_occluder"
+    bl_label = "Remove Obstacle"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        pj = context.scene.pj
+        if not 0 <= pj.occluder_index < len(pj.occluders):
+            self.report({"WARNING"}, "No obstacle selected")
+            return {"CANCELLED"}
+        pj.occluders.remove(pj.occluder_index)
+        pj.occluder_index = max(0, pj.occluder_index - 1)
+        request_scene_sync(context.scene, SyncScope.ANALYSIS)
+        return {"FINISHED"}
+
+
+class PJ_OT_clear_occluders(Operator):
+    """Remove every object from the obstacle list"""
+
+    bl_idname = "projection.clear_occluders"
+    bl_label = "Clear Obstacles"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        pj = context.scene.pj
+        pj.occluders.clear()
+        pj.occluder_index = 0
+        request_scene_sync(context.scene, SyncScope.ANALYSIS)
+        return {"FINISHED"}
+
+
 _CLASSES = (
     PJ_OT_create_curved_wall,
     PJ_OT_create_flat_wall,
@@ -589,6 +674,9 @@ _CLASSES = (
     PJ_OT_analyze,
     PJ_OT_clear_analysis,
     PJ_OT_copy_report,
+    PJ_OT_add_occluder,
+    PJ_OT_remove_occluder,
+    PJ_OT_clear_occluders,
 )
 
 

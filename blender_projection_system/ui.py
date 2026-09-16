@@ -190,6 +190,16 @@ class PJ_PT_selected_projector(_Base):
         box.label(text=f"Worst incidence: {p.calc_max_incidence_deg:.1f} deg")
         if p.calc_mean_nits > 0.0:
             box.label(text=f"Mean luminance: {p.calc_mean_nits:.0f} nits")
+        if p.calc_occluded_cells > 0:
+            row = box.row()
+            row.alert = True
+            row.label(
+                text=(
+                    f"Occluded: {p.calc_occluded_cells} cells "
+                    f"({p.calc_occluded_ratio * 100:.1f}%)"
+                ),
+                icon="ERROR",
+            )
 
 
 class PJ_PT_analysis(_Base):
@@ -224,6 +234,28 @@ class PJ_PT_analysis(_Base):
         col.prop(pj, "screen_gain")
         col.prop(pj, "blend_model", text="Overlap")
         col.prop(pj, "draw_frustums")
+
+        box = layout.box()
+        box.label(text="Obstacles / Occlusion", icon="SNAP_VOLUME")
+        col = box.column(align=True)
+        col.prop(pj, "occluder_collection", text="Collection")
+        row = col.row(align=True)
+        row.operator("projection.add_occluder", text="Add Selected", icon="ADD")
+        row.operator("projection.remove_occluder", text="Remove", icon="REMOVE")
+        row.operator("projection.clear_occluders", text="Clear", icon="TRASH")
+        if len(pj.occluders) > 0:
+            col.template_list(
+                "UI_UL_list",
+                "PJ_UL_occluders",
+                pj,
+                "occluders",
+                pj,
+                "occluder_index",
+                rows=min(len(pj.occluders), 4),
+            )
+        else:
+            col.label(text="No obstacles: every projector sees the wall", icon="INFO")
+        col.prop(pj, "show_occlusion_overlay", text="Draw Shadows")
 
 
 class PJ_PT_report(_Base):

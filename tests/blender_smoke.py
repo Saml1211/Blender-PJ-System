@@ -646,9 +646,141 @@ def main() -> None:
     check(len(report.blend_zones) == 2, f"two blend zones (got {len(report.blend_zones)})")
     check(report.max_overlap_count == 2, f"no triple overlap (max {report.max_overlap_count})")
 
-    # A no-hit reanalysis must not retain photometry or image dimensions from
-    # the previous successful calculation, and it must not invent assumptions.
-    from blender_projection_system.core.pose import look_at
+    # -- 4b. occlusion: a real obstacle in the light path -------------------
+    # A slab perpendicular to the projectors' aim at x=5 intercepts every ray
+    # from every projector (they sit near x=2, the wall surface reaches x=8
+    # at the arc centre and x=5.66 at its ends), so the expected answer is
+    # exact: nothing is lit and every projector is fully occluded. The slab
+    # carries a non-uniform scale on purpose, which also proves the caster
+    # honours the full world matrix rather than translation alone.
+    print("\n[4b] occlusion & line of sight")
+    import blender_projection_system.scene_sync as live_sync
+
+    bpy.ops.mesh.primitive_cube_add(size=2.0, location=(5.0, 0.0, 2.0))
+    obstacle = bpy.context.active_object
+    obstacle.name = "PJ_SmokePillar"
+    obstacle.scale = (0.2, 8.0, 3.0)
+    bpy.context.view_layer.update()
+
+    check(
+        viz.build_occlusion_caster(scene) is None,
+        "no caster is built while the obstacle list is empty",
+    )
+
+    # Every property the new UI block draws must exist on the property groups:
+    # a typo there only fails when a user opens the sidebar.
+    for prop_name in (
+        "occluders",
+        "occluder_index",
+        "occluder_collection",
+        "show_occlusion_overlay",
+    ):
+        check(hasattr(scene.pj, prop_name), f"scene exposes {prop_name}")
+    for prop_name in ("calc_occluded_cells", "calc_occluded_ratio"):
+        check(
+            all(hasattr(o.pj_projector, prop_name) for o in projectors),
+            f"projector exposes {prop_name}",
+        )
+
+    # The target wall must be refused: it would shadow its own samples.
+    wall_obj_for_poll = scene.pj.target_wall
+    if wall_obj_for_poll is None:
+        check(False, "target wall remains available for the refusal check")
+        return
+    for obj in list(bpy.context.selected_objects):
+        obj.select_set(False)
+    wall_obj_for_poll.select_set(True)
+    bpy.context.view_layer.objects.active = wall_obj_for_poll
+    check(
+        bpy.ops.projection.add_occluder() == {"CANCELLED"},
+        "the target wall is refused as an obstacle",
+    )
+    check(len(scene.pj.occluders) == 0, "refused wall left the obstacle list empty")
+
+    for obj in list(bpy.context.selected_objects):
+        obj.select_set(False)
+    obstacle.select_set(True)
+    bpy.context.view_layer.objects.active = obstacle
+    check(bpy.ops.projection.add_occluder() == {"FINISHED"}, "add_occluder finished")
+    check(len(scene.pj.occluders) == 1, "obstacle recorded in the list")
+    check(
+        scene.pj.occluders[0].object is obstacle,
+        "obstacle entry points at the selected object",
+    )
+    check(viz.build_occlusion_caster(scene) is not None, "a BVH caster is built")
+
+    check(live_sync.flush_scene_sync(scene), "occlusion edit converges live")
+    occluded_lines = [e.text for e in scene.pj.report_lines]
+    occluded_text = "\n".join(occluded_lines)
+    check(
+        "occluded by an obstacle" in occluded_text,
+        "occlusion is reported loudly, not silently dropped",
+    )
+    check(
+        any(t.startswith("Occlusion:") for t in occluded_lines),
+        "report carries an occlusion section",
+    )
+    occluded_coverage_line = next(t for t in occluded_lines if t.startswith("Coverage:"))
+    occluded_coverage = float(occluded_coverage_line.split()[1].rstrip("%")) / 100.0
+    check(
+        occluded_coverage == 0.0 and operator_coverage > 0.0,
+        f"a slab across every ray darkens the wall ({occluded_coverage:.3f} "
+        f"from {operator_coverage:.3f})",
+    )
+    check(
+        all(approx(o.pj_projector.calc_occluded_ratio, 1.0) for o in projectors),
+        "every projector reports a fully occluded image",
+    )
+    check(
+        all(o.pj_projector.calc_occluded_cells > 0 for o in projectors),
+        "occluded cell counts are written back onto each projector",
+    )
+    occlusion_overlay = viz.get_collection(bpy.context, viz.COLLECTION_ANALYSIS)
+    shadows = [o for o in occlusion_overlay.objects if o.name == "PJ_Occlusion"]
+    check(len(shadows) == 1, "shadow overlay geometry was built")
+    if shadows:
+        check(
+            len(shadows[0].data.polygons) > 0,
+            "shadow overlay has drawable faces",
+        )
+
+    # Hiding the obstacle must clear the occlusion result again.
+    scene.pj.show_occlusion_overlay = False
+    check(live_sync.flush_scene_sync(scene), "overlay toggle converges")
+    check(
+        not any(o.name == "PJ_Occlusion" for o in occlusion_overlay.objects),
+        "shadow overlay disappears when it is switched off",
+    )
+    scene.pj.show_occlusion_overlay = True
+
+    check(bpy.ops.projection.clear_occluders() == {"FINISHED"}, "clear_occluders finished")
+    check(len(scene.pj.occluders) == 0, "obstacle list is empty again")
+    check(live_sync.flush_scene_sync(scene), "clearing obstacles converges")
+    restored_text = "\n".join(e.text for e in scene.pj.report_lines)
+    check(
+        "occluded by an obstacle" not in restored_text,
+        "occlusion warning clears with the obstacle",
+    )
+    check(
+        all(approx(o.pj_projector.calc_occluded_cells, 0) for o in projectors),
+        "per-projector occlusion counts reset",
+    )
+    check(
+        all(
+            approx(o.pj_projector.calc_occluded_ratio, 0.0)
+            for o in projectors
+        ),
+        "per-projector occlusion ratios reset",
+    )
+
+    # The obstacle did not disturb the projectors or the wall.
+    check(
+        obstacle.name in bpy.data.objects,
+        "clearing obstacles does not delete user geometry",
+    )
+    bpy.data.objects.remove(obstacle, do_unlink=True)
+
+    from blender_projection_system.core.pose import look_at  # noqa: F811
 
     original_matrices = [o.matrix_world.copy() for o in projectors]
     for o in projectors:

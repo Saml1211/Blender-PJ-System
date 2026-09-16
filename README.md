@@ -35,12 +35,13 @@ This is **v0.5**. The table below is the whole truth about what works.
 | Projector aiming | Aim-at-target, plus a level (lens-shift) and a tilt mounting mode. |
 | Array planning | Lay *N* projectors across a wall at a requested overlap. Solves numerically for the standoff distance that produces the required arc width. |
 | Coverage / gaps / blend zones | Rasterised over the wall in arc-length × height. Reports lit area, dark bands, blend widths, and overlap count. |
+| Line-of-sight occlusion | Blocking-hit ray-cast from each projector aperture to each coverage cell through a BVH over user-selected obstacle objects (columns, beams, trusses). Reports occluded sample fraction per projector, flags affected cells, and draws a red shadow overlay. |
 | Blend luminance modelling | Optional linear-ramp model of what an edge-blending processor does across each overlap — the combined luminance stays flat through the blend zone instead of doubling. Off by default; see *Experimental / limited*. |
 | Brightness | Illuminance and luminance from real per-point distance and incidence. **First-order estimate — see the assumptions below.** |
 | Realtime parametric scene | Generated flat and curved walls are driven by an owned Geometry Nodes group. Wall, array, projector, and analysis controls automatically converge cameras, overlays, computed fields, and the report after a short idle debounce. |
 | Non-destructive scene output | Generated content is owner-tagged and organised in dedicated collections. Live refresh reconciles only owned array cameras and overlays; manual projectors and user collections are preserved. |
 
-More than 200 tests run under plain CPython against the production modules,
+More than 280 tests run under plain CPython against the production modules,
 plus a headless Blender smoke workflow. Both run in CI.
 
 ### Experimental / limited

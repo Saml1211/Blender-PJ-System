@@ -249,6 +249,9 @@ def _analysis_inputs(scene: bpy.types.Scene):
         grid_z=pj.grid_z,
         screen_gain=pj.screen_gain,
         blend_model=BlendModel[pj.blend_model],
+        # Obstacles are always tested, even with the shadow overlay switched
+        # off: the numbers in the report must not depend on what is drawn.
+        occlusion_caster=viz.build_occlusion_caster(scene),
     )
     warnings.extend(report.warnings)
     if report.brightness is not None:
@@ -281,6 +284,14 @@ def sync_analysis(scene: bpy.types.Scene, *, visualize: bool = True) -> Analysis
         for obj, spec, footprint in footprints:
             viz.configure_camera(obj, spec, max(footprint.center_distance, 1e-3))
             viz.store_footprint_results(obj, footprint, pj.screen_gain)
+            occlusion = report.projector_occlusions.get(obj.name)
+            props = obj.pj_projector
+            if occlusion is None:
+                props.calc_occluded_cells = 0
+                props.calc_occluded_ratio = 0.0
+            else:
+                props.calc_occluded_cells = occlusion.occluded_cells
+                props.calc_occluded_ratio = occlusion.occluded_fraction
         set_report(scene, lines, warnings)
         if visualize:
             viz.clear_collection(scene, viz.COLLECTION_ANALYSIS)
@@ -290,6 +301,8 @@ def sync_analysis(scene: bpy.types.Scene, *, visualize: bool = True) -> Analysis
                     viz.build_frustum_object(scene, footprint, index)
             viz.build_gap_object(scene, wall, report.gaps)
             viz.build_blend_object(scene, wall, report.blend_zones)
+            if pj.show_occlusion_overlay and report.shadowed_cells:
+                viz.build_occlusion_object(scene, wall, report.shadowed_cells)
 
     return AnalysisSyncResult(
         tuple(lines),

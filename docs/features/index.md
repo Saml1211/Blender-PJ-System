@@ -58,8 +58,34 @@ that only hit behind the origin all return `None`.
 - Rotated walls and walls with unapplied object scale are rejected. Translation
   is supported. Imported-mesh targets use their depsgraph-evaluated geometry,
   including modifier stacks.
-- No occlusion. If a column stands between projector and wall, this add-on
-  does not know.
+- Obstacles in the light path are tested against user-selected obstacle
+  objects (see Line-of-sight occlusion below). When no obstacles are
+  configured, line of sight is assumed clear.
+
+---
+
+## Line-of-sight occlusion — `core/occlusion.py`
+
+A projector's coverage claim is only honest if nothing stands in the light path.
+For each cell in the coverage raster, a ray is cast from the projector aperture
+to the surface point. If any user-selected obstacle intercepts the ray before it
+reaches the wall, the projector contributes zero light to that cell.
+
+Casting delegates through the injectable `OcclusionCaster` protocol (ADR 0004):
+`core` ships a pure-Python Möller–Trumbore implementation
+(`TriMeshOcclusionCaster`) used by unit tests, while the Blender layer builds a
+`mathutils.bvhtree.BVHTree` across evaluated obstacle meshes and injects it.
+
+**Honest reporting (ADR 0002):**
+- Obstacles never silently delete or shift cells; occluded cells are tallied
+  per projector, reported in `CoverageReport.projector_occlusions`, and warned
+  about loudly whenever an image is partially or fully shaded.
+- Cells where every covering projector is blocked are recorded as
+  `shadowed_cells` and drawn in the viewport as a dedicated red overlay
+  (`PJ_Occlusion`).
+- The target wall itself, other wall objects, projectors, and add-on-owned
+  overlays are automatically excluded from the obstacle set so the target
+  never occludes its own surface samples.
 
 ---
 

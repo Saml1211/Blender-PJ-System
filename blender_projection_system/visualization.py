@@ -23,6 +23,7 @@ from .core.array import ProjectorPlacement
 from .core.errors import ProjectionError
 from .core.footprint import Footprint, footprint_corners_world
 from .core.mesh_surface import MeshHit, MeshRayCast, MeshSurface
+from .core.occlusion import OcclusionCaster
 from .core.surfaces import CylindricalWall, PlanarWall, Surface
 from .core.vectors import length as vec_length
 from .core.vectors import sub as sub_vec
@@ -188,6 +189,98 @@ def _bvh_caster(bvh: BVHTree) -> MeshRayCast:
             distance=distance,
             face_normal=(normal.x, normal.y, normal.z),
         )
+
+    return cast
+
+
+def _occluder_objects(scene: bpy.types.Scene) -> list[bpy.types.Object]:
+    """Mesh objects the user listed (or collected) as obstacles, filtered hard.
+
+    Excluded on purpose: the target wall and any other object tagged as a wall
+    (it would shadow its own samples), projectors, add-on-owned generated
+    objects, hidden objects, and non-meshes. The analysis is only honest if
+    what remains is genuinely user geometry standing in the light path.
+    """
+    pj = scene.pj
+    wall = pj.target_wall
+    candidates: list[bpy.types.Object] = []
+    candidates.extend(item.object for item in pj.occluders if item.object is not None)
+    collection = pj.occluder_collection
+    if collection is not None:
+        candidates.extend(collection.objects)
+
+    seen: set[int] = set()
+    out: list[bpy.types.Object] = []
+    for obj in candidates:
+        if obj is None:
+            continue
+        pointer = obj.as_pointer()
+        if pointer in seen:
+            continue
+        seen.add(pointer)
+        if obj is wall:
+            continue
+        if obj.type != "MESH":
+            continue
+        if getattr(obj, "pj_wall", None) and obj.pj_wall.is_wall:
+            continue
+        if getattr(obj, "pj_projector", None) and obj.pj_projector.is_projector:
+            continue
+        if obj.get(OWNER_KEY) == OWNER_ID:
+            continue
+        if obj.hide_viewport or obj.hide_get():
+            continue
+        out.append(obj)
+    return out
+
+
+def build_occlusion_caster(scene: bpy.types.Scene) -> OcclusionCaster | None:
+    """BVH over every selected obstacle, injected into the coverage analysis.
+
+    The same dependency-inversion pattern as ADR 0004's mesh target: the BVH
+    is built here (bpy-only) and the bpy-free ``core`` only ever sees the
+    callable. Returns ``None`` when the user has selected no usable obstacle,
+    which makes the analysis behave exactly as it did before #1.
+    """
+    objects = _occluder_objects(scene)
+    if not objects:
+        return None
+
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    world_vertices: list[tuple[float, float, float]] = []
+    triangles: list[tuple[int, int, int]] = []
+    for obj in objects:
+        eval_obj = obj.evaluated_get(depsgraph)
+        mesh = eval_obj.to_mesh()
+        try:
+            if len(mesh.polygons) == 0:
+                continue
+            mesh.calc_loop_triangles()
+            offset = len(world_vertices)
+            matrix = eval_obj.matrix_world
+            for vertex in mesh.vertices:
+                world = matrix @ vertex.co
+                world_vertices.append((world.x, world.y, world.z))
+            triangles.extend(
+                (tri.vertices[0] + offset, tri.vertices[1] + offset, tri.vertices[2] + offset)
+                for tri in mesh.loop_triangles
+            )
+        finally:
+            eval_obj.to_mesh_clear()
+
+    if not triangles:
+        return None
+    if len(triangles) > MAX_MESH_TRIS:
+        raise ProjectionError(
+            f"obstacles total {len(triangles)} triangles (limit {MAX_MESH_TRIS}); "
+            "decimate them before running the occlusion check"
+        )
+    bvh = BVHTree.FromPolygons(world_vertices, triangles, all_triangles=True)
+
+    def cast(origin, direction, max_distance) -> bool:
+        if max_distance <= 0.0:
+            return False
+        return bvh.ray_cast(Vector(origin), Vector(direction), max_distance)[0] is not None
 
     return cast
 
@@ -636,5 +729,39 @@ def build_blend_object(
     obj.data.materials.append(mat)
     obj.color = (1.0, 1.0, 1.0, 1.0)
     obj.show_wire = True
+    link_only_to(obj, get_collection(context, COLLECTION_ANALYSIS))
+    return obj
+
+
+def build_occlusion_object(
+    context,
+    wall: Surface,
+    shadowed_cells: Iterable,
+) -> bpy.types.Object | None:
+    """A red band per cell that occlusion leaves dark.
+
+    Only *fully shadowed* cells are drawn - cells where a projector is
+    blocked but another still lights the spot are reported in the text and
+    left to the footprint overlays, because painting them would overstate
+    how much light the wall actually loses.
+    """
+    verts, faces = _band_geometry(
+        wall,
+        [(cell.s_start, cell.s_end, cell.z_start, cell.z_end) for cell in shadowed_cells],
+        offset_scale=2.0,
+    )
+    if not faces:
+        return None
+
+    mesh = bpy.data.meshes.new("PJ_Occlusion_mesh")
+    mesh.from_pydata(verts, [], faces)
+    mesh.update()
+    mesh.validate()
+
+    obj = bpy.data.objects.new("PJ_Occlusion", mesh)
+    obj[OWNER_KEY] = OWNER_ID
+    mat = _owned_material("PJ_Occlusion", "occlusion", (0.9, 0.15, 0.15, 0.85))
+    obj.data.materials.append(mat)
+    obj.color = (0.9, 0.15, 0.15, 1.0)
     link_only_to(obj, get_collection(context, COLLECTION_ANALYSIS))
     return obj

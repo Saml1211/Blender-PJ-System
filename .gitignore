@@ -96,5 +96,8 @@ vmi_mcp_server.log
 # Local Blender extension install sandbox (build artefact)
 .workflow/install-sandbox/
 
+# Python virtual environments (pinned dev tools: pytest 8.3.5 / ruff 0.9.10)
+.venv*/
+
 # pi session-local state
 .pi/

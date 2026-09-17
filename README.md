@@ -37,24 +37,24 @@ This is **v0.5**. The table below is the whole truth about what works.
 | Coverage / gaps / blend zones | Rasterised over the wall in arc-length × height. Reports lit area, dark bands, blend widths, and overlap count. |
 | Line-of-sight occlusion | Blocking-hit ray-cast from each projector aperture to each coverage cell through a BVH over user-selected obstacle objects (columns, beams, trusses). Reports occluded sample fraction per projector, flags affected cells, and draws a red shadow overlay. |
 | Projector & lens spec library | Curated catalog of verified venue/staging projectors (Christie, Barco, Panasonic, Epson) with lens lineups, throw ratio ranges, shift limits, transmission factors, and datasheet URLs. Model picker populates planning inputs and warns (never clamps) on out-of-range optics; extensible via CSV import. |
-| Blend luminance modelling | Optional linear-ramp model of what an edge-blending processor does across each overlap — the combined luminance stays flat through the blend zone instead of doubling. Off by default; see *Experimental / limited*. |
+| Lumens derate chain | Explicit ISO/IEC 21118 production limit (default 80%), picture mode factor, lamp/laser aging, and lens transmission derates. Reports rated, typical, and worst-case performance bands in both lux and nits. |
+| Blend luminance modelling | Optional linear or gamma-shaped ramp (exponent 0.5–1.5 per Dataton WATCHOUT) across overlaps with theoretical mid-zone error prediction, overlap guidance (<5%, 5–10%, 10–20%, >20%), and on-site calibration checklist. |
+| Ambient effective contrast | Ambient illuminance (lux) × screen gain → veiling luminance; per-cell effective contrast `(L_white + L_amb) / (L_black + L_amb)` using native contrast. Evaluated against AVIXA ISCR categories (ANSI/AVIXA V201.01:2021). |
+| ANSI/IEC 9-point output | Samples 3×3 equal zone centers for total light output (lumens) and center-to-corner uniformity ratio in datasheet terms (nits and foot-lamberts). |
+| Structured handoff export | Serializes full coverage, photometry, and rigging schedules (coordinates, angles, throws, shifts, specs, 3D corners) to machine-readable JSON (`schema_version: 1`) and CSV. |
+| DISCAS viewer audit | Per-seat viewer distance and off-axis angle checks per ANSI/INFOCOMM V202.01: BDM 10-arcminute font legibility, ADM 1-arcminute single-pixel resolution, and closest viewer limits. |
 | Brightness | Illuminance and luminance from real per-point distance and incidence. **First-order estimate — see the assumptions below.** |
 | Realtime parametric scene | Generated flat and curved walls are driven by an owned Geometry Nodes group. Wall, array, projector, and analysis controls automatically converge cameras, overlays, computed fields, and the report after a short idle debounce. |
 | Non-destructive scene output | Generated content is owner-tagged and organised in dedicated collections. Live refresh reconciles only owned array cameras and overlays; manual projectors and user collections are preserved. |
 
-More than 310 tests run under plain CPython against the production modules,
+More than 340 tests run under plain CPython against the production modules,
 plus a headless Blender smoke workflow. Both run in CI.
 
 ### Experimental / limited
 
 - **Imported meshes are supported as frontal targets only (new in v0.4).** Tag any imported mesh object with *Set as Target Wall* and analysis ray-casts against it via a BVH. The mesh must be mostly frontal to the projectors: folds, overhangs, domes, and columns are rejected with an error naming the offending region rather than silently mangled. Modifier stacks are applied — the evaluated mesh you see in the viewport is the surface analysis uses.
-- **Brightness is an estimate, not a photometric simulation.** Every report
-  states its assumptions; they are also in `core/photometry.py`. In short:
-  uniform intensity across the frustum, full rated lumens, a Lambertian screen,
-  **zero ambient light**, and linear addition in overlaps. Real rooms are
-  dimmer. Derate deliberately.
-- **Blend-zone geometry is always reported; the luminance ramp is opt-in.** The add-on tells you where images overlap and how wide the overlap is. Without the ramp (the default) overlapping light adds linearly; with **Linear blend ramp** it models complementary ramps as described above.
-- **The blend ramp is a first-order model.** With **Overlap ▸ Linear blend ramp**, each pair's images ramp down/up complementarily across their overlap, so blend-zone brightness matches single-image levels. Real processors often use gamma-shaped curves and per-band fine-trimming; check yours before trusting absolute numbers in the zone. Triple overlaps stay additive because they are flagged as placement errors.
+- **Brightness and contrast are engineering estimates, not full radiosity simulations.** Every report states its assumptions: uniform frustum intensity, Lambertian screen reflectance, uniform ambient illuminance across the screen, and native projector contrast. Inter-reflections between surfaces and directional ambient light angles are deliberately not modelled.
+- **Blend-zone geometry is always reported; the luminance ramp is opt-in.** The add-on tells you where images overlap and how wide the overlap is. Without the ramp (the default) overlapping light adds linearly; with **Linear blend ramp** or **Gamma blend ramp** it models complementary ramps as described above. Real processors require on-site grayscale validation and color calibration.
 - **Target transforms are constrained.** Generated walls may be translated,
   but rotation or unapplied scale is rejected because the implemented surface
   is a vertical circular cylinder, not an arbitrary transformed mesh.

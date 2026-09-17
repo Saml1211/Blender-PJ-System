@@ -1,6 +1,6 @@
 # Next feature increments — candidate shortlist (v0.5.0 → v0.6 planning)
 
-**Status:** Proposal (not yet accepted)
+**Status:** Accepted & Landed (Increments #1, #2, #3a, #3b, #3c, #4 Phase 1, #5 completed in main)
 **Date:** 2026-09-16
 **Base:** `blender_projection_system` v0.5.0 at `2f98a72`
 **Method:** Four independent research lanes — (1) user value & workflows, (2) competitive/industry landscape, (3) technical feasibility vs. architecture, (4) physics/standards credibility — each producing 5+ distinct candidate increments, an internal comparison, and an explicit rejected-ideas list, then cross-compared here. Full source lists are in the appendix. Lane execution note: the first subagent wave failed on a provider quota (all four lanes); all lanes were re-run on a working model and one lane required a second relaunch to deliver its full report. Two research claims are flagged medium-confidence by their lanes and are marked inline.
@@ -28,7 +28,7 @@ Two independent *rejections* also converged: both web lanes separately rejected 
 
 Effort scale: **S** = single module + tests; **M** = 2–4 modules or a new Blender-layer surface; **L** = cross-cutting or new subsystem.
 
-### #1 — Occlusion & line-of-sight check *(S/M)*
+### #1 — Occlusion & line-of-sight check *(S/M — Landed in `a831e50`)*
 
 **What.** For each coverage raster cell, cast from the projector aperture toward the surface point through a BVH built over user-selected occluder objects. Flag occluded cells in the coverage raster, report the occluded sample fraction per projector, and visualise shadowed cells (hatched or red overlay).
 
@@ -42,7 +42,7 @@ Effort scale: **S** = single module + tests; **M** = 2–4 modules or a new Blen
 
 **Builds on.** ADR 0004's injection seam; the analysis-scope debounce gives live occlusion updates for free, including last-valid-state preservation on invalid edits.
 
-### #2 — Projector & lens spec library *(M)*
+### #2 — Projector & lens spec library *(M — Landed in `0c8c380`)*
 
 **What.** A local, versioned spec library (JSON/CSV, user-extensible) keyed by model: lumens, contrast, lens lineup with per-lens throw-ratio range, horizontal/vertical shift range, lens transmission factor, weight, plus a `source_url` per row and a `verified` flag. A model picker populates and validates the throw/shift/lumens inputs; out-of-range entries warn rather than silently clamp.
 
@@ -56,13 +56,13 @@ Effort scale: **S** = single module + tests; **M** = 2–4 modules or a new Blen
 
 **Builds on.** Property groups and report machinery; a pure-`core/` schema is trivially testable under CPython.
 
-### #3 — Photometry credibility cycle *(three S landings, sequential)*
+### #3 — Photometry credibility cycle *(three S landings, sequential — Landed in `83dd189`, `d1ad64d`, `03c56bc`)*
 
-**3a — Lumens derate chain (S).** Explicit, cited factors replacing "full rated lumens": production lower-limit (default 80%, per the ISO/IEC 21118 ≥80%-of-spec rule¹), picture mode, lamp ageing/optics. The report shows rated / typical / worst-case, and every derived figure carries the band. Turns "6,000 lm assumed" into an audit-proof margin statement.
+**3a — Lumens derate chain + blend-ramp gamma (S — Landed in `83dd189`).** Explicit, cited factors replacing "full rated lumens": production lower-limit (default 80%, per the ISO/IEC 21118 ≥80%-of-spec rule¹), picture mode, lamp ageing/optics. The report shows rated / typical / worst-case, and every derived figure carries the band. Turns "6,000 lm assumed" into an audit-proof margin statement. Includes gamma-shaped blend ramp with exponent parameter (default 1.0, range 0.5–1.5 per Dataton WATCHOUT soft-edge gamma), theoretical mid-zone error prediction, overlap guidance (<5%, 5–10%, 10–20%, >20%), and on-site validation checklist.
 
-**3b — Ambient-light effective contrast (M).** Ambient illuminance at the screen (user-entered from a survey) × screen gain → veiling luminance; per-cell effective contrast raster `(L_white + L_amb) / (L_black + L_amb)` plus min/mean/worst in the report. This is the number design reviews actually argue about, computed with the same two-formula model working integrators publish publicly. AVIXA ISCR category *names* ("Basic Decision Making", "Passive Viewing", "Full Motion Video", "Analytical Decision Making") may label reference points — with an explicit disclaimer: "structure per ANSI/AVIXA V201.01:2021; this tool does not certify compliance; numeric tiers not reproduced."
+**3b — Ambient-light effective contrast (M — Landed in `d1ad64d`).** Ambient illuminance at the screen (user-entered from a survey) × screen gain → veiling luminance; per-cell effective contrast raster `(L_white + L_amb) / (L_black + L_amb)` plus min/mean/worst in the report. This is the number design reviews actually argue about, computed with the same two-formula model working integrators publish publicly. AVIXA ISCR category *names* ("Basic Decision Making", "Passive Viewing", "Full Motion Video", "Analytical Decision Making") may label reference points — with an explicit disclaimer: "structure per ANSI/AVIXA V201.01:2021; this tool does not certify compliance; numeric tiers not reproduced."
 
-**3c — ANSI/IEC 9-point vocabulary output (S).** Sample the existing coverage raster at the ANSI/IEC nine-zone positions (optionally 13/25-point); report light output (9-point average × area) and center-to-corner uniformity ratio in datasheet terms, in both nits and foot-lamberts. Tiny effort, outsized credibility: Draper's free planner anchors on AVIXA standards — this is table stakes in the category.
+**3c — ANSI/IEC 9-point vocabulary output (S — Landed in `03c56bc`).** Sample the existing coverage raster at the ANSI/IEC nine-zone positions (optionally 13/25-point); report light output (9-point average × area) and center-to-corner uniformity ratio in datasheet terms, in both nits and foot-lamberts. Tiny effort, outsized credibility: Draper's free planner anchors on AVIXA standards — this is table stakes in the category.
 
 **Rationale.** The tool's weakest honesty point is zero-ambient luminance with full rated lumens and a uniform frustum. Three lanes independently flagged that a tool reporting *higher* lux than Epson's free web tool (which models lens transmission loss) will be read as optimistic — and oversell installs. #3a/3b/3c convert the already-stated assumptions 1, 2, and 4 from fine print into *inputs*.
 
@@ -74,7 +74,7 @@ Effort scale: **S** = single module + tests; **M** = 2–4 modules or a new Blen
 
 **Builds on.** `core/photometry.py` multiplicative inputs; the coverage raster it already produces; the report pipeline.
 
-### #4 — Structured handoff export: analysis JSON/CSV + rigging/mount schedule *(S/M, phase 1; M/L, phase 2)*
+### #4 — Structured handoff export: analysis JSON/CSV + rigging/mount schedule *(S/M, phase 1 — Landed in `a84e162`; M/L, phase 2)*
 
 **What.** Phase 1: serialize the existing report dataclasses (`CoverageReport`, `BrightnessReport`, `ArraySyncResult` placements) to JSON and the coverage raster to CSV, plus a rigging table (unit, mount x/y/z, throw, aim fraction) appended to report and CSV. One new operator, output path via the Blender file browser. Phase 2: per-projector corner/warp grids derived from the existing back-projection, exported toward processors (TouchDesigner/Resolume/media servers) — worded honestly as design-phase targets, not calibration.
 
@@ -88,7 +88,7 @@ Effort scale: **S** = single module + tests; **M** = 2–4 modules or a new Blen
 
 **Builds on.** The `copy_report` pattern; `footprint.py` back-projection already produces the corner/warp points; land after #2 so export rows carry resolved spec provenance.
 
-### #5 — DISCAS / per-seat viewer audit *(S/M — designated follow-up, next cycle)*
+### #5 — DISCAS / per-seat viewer audit *(S/M — Landed in `3412abd`)*
 
 **What.** A farthest-viewer DISCAS check (ANSI/INFOCOMM V202.01: BDM/ADM content type, %element height) from viewer positions in the scene; optionally a per-seat off-axis luminance audit ("seat 14 at 31° off-axis sees 78 nits"). The luminance-only version can ship before #3b's contrast lands.
 

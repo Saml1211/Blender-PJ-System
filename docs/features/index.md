@@ -249,6 +249,97 @@ Results are flagged against the ~55 nit (16 fL) cinema-white reference and a
 
 ---
 
+## Photometry credibility cycle — `core/photometry.py`, `core/coverage.py`
+
+### Lumens derate chain
+
+Replaces "full rated lumens assumed" with an explicit, cited derate chain:
+- **Production lower limit:** default 80%, based on ISO/IEC 21118:2012 §4.1/§6.1
+  which defines datasheet light output as a production average and sets the
+  minimum allowable delivered output at ≥ 80% of specification.
+- **Picture mode factor:** default 0.85, representing calibrated/standard color
+  mode relative to uncalibrated peak dynamic boost.
+- **Aging factor:** default 0.80, modeling lamp or laser flux degradation down
+  to target service point or end-of-life replacement threshold.
+- **Fitted lens transmission factor:** optical transmission factor from the
+  selected lens in the spec library (typically 0.75–0.92).
+
+Every report outputs **rated**, **typical**, and **worst-case** performance
+bands across both luminance (nits) and illuminance (lux), transforming estimates
+into audit-proof margin statements.
+
+### Gamma-shaped blend ramp & overlap guidance
+
+Upgrades linear blending to industry-standard soft-edge gamma curves:
+- **Gamma exponent:** parameter (default 1.0, range 0.5–1.5) matching the
+  Dataton WATCHOUT soft-edge gamma convention.
+- **Luminance error prediction:** computes theoretical mid-zone deviation
+  `2^(1 - gamma) - 1.0` (e.g. +14.9% center hot spot for γ=0.8, -12.9% dip for γ=1.2).
+- **Overlap guidance:** evaluates adjacent overlap fraction against industry
+  rules (<5% difficult to blend seamlessly, 5–10% tight, 10–20% recommended,
+  >20% generous).
+- **On-site calibration checklist:** provides an explicit checklist for
+  grayscale-ramp verification (25/50/75/100% white), black-level matching, and
+  color gamut calibration.
+
+### Ambient-light effective contrast — AVIXA ISCR
+
+Computes on-screen contrast in real rooms from user-entered ambient illuminance
+(lux) measured at the screen surface:
+- **Veiling luminance:** `L_amb = E_amb · gain / π` in nits.
+- **Per-cell effective contrast:** `(L_white + L_amb) / (L_black + L_amb)`
+  accumulated over the raster using each projector's native contrast
+  (`ProjectorSpec.native_contrast`, labeled native, not dynamic).
+- **AVIXA ISCR Categories:** reference categories per ANSI/AVIXA V201.01:2021
+  (Passive Viewing, Basic Decision Making, Analytical Decision Making, Full
+  Motion Video) alongside mandatory disclaimer:
+  *"Structure per ANSI/AVIXA V201.01:2021; this tool does not certify compliance; numeric tiers not reproduced."*
+
+### ANSI/IEC 9-point vocabulary output
+
+Samples the active coverage area at the ANSI/IEC 61947-1 / ANSI IT7.228 3×3
+equal zone centers:
+- Reports total light output (`9-point average illuminance · area`) in datasheet lumens.
+- Reports center-to-corner uniformity ratio (`min(corners) / center`), 4-corner
+  average to center, and 9-point min/max uniformity in both nits and foot-lamberts.
+- Mandatory disclaimer: *"Model output in ANSI/IEC vocabulary; calculated from geometric simulation, not physical laboratory measurement."*
+
+---
+
+## Structured handoff export — `core/report_export.py`, `operators.py`
+
+Direct export of all analysis results to structured, machine-readable formats:
+- **JSON (`schema_version: 1`):** Complete tree containing wall geometry,
+  raster coverage, gaps, blend zones with guidance, photometry stats and derate
+  bands, effective contrast, 9-point sample coordinates and metrics, and rigging
+  schedules.
+- **CSV:** Tabular export suitable for Excel or CAD schedules, including mount
+  coordinates (x, y, z), aim angles (yaw, pitch, roll), throw distances, image
+  dimensions, lens shift percentages, lumens, and weight.
+- **3D World Corners:** Each projector's 4 image corners on the wall in world
+  coordinates, providing targets for media server processors (TouchDesigner,
+  Resolume).
+
+---
+
+## DISCAS / Per-seat viewer audit — `core/discas.py`
+
+Implements display sizing mathematics per ANSI/INFOCOMM V202.01 (DISCAS):
+- **Basic Decision Making (BDM):** Legibility distance based on 10 arcminutes
+  visual subtension for `% Element Height` (default 3.0%):
+  `D_max = (H · %EH / 100) / tan(10 arcmin)`.
+- **Analytical Decision Making (ADM):** 1-arcminute single-pixel visual acuity
+  limit based on display vertical resolution (e.g. 1080p, 4K):
+  `D_max = (H / V_res) / tan(1 arcmin)`.
+- **Closest viewer limit:** Minimum recommended distance `D_min = H · 1.0`.
+- **Per-seat off-axis audit:** Computes viewer distance, horizontal off-axis
+  angle relative to screen normal, and perceived Lambertian luminance
+  (`L_mean · cos θ`), auditing scene objects (`Viewer*`, `Seat*`) or user-entered
+  farthest viewer distance.
+- Mandatory disclaimer: *"Calculated per ANSI/INFOCOMM V202.01 (DISCAS) geometric equations; evaluates mathematical sizing limits, does not certify human vision."*
+
+---
+
 ## What is not here
 
 Phase synchronisation, thermal modelling, ambient-light AI, VR/AR, and CAD

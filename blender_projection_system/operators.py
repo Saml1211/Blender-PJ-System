@@ -15,13 +15,19 @@ import math
 from dataclasses import replace
 
 import bpy
-from bpy.props import BoolProperty, FloatProperty, IntProperty, StringProperty
+from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
 from bpy.types import Operator
 
 from . import visualization as viz
 from .core.array import MODE_LEVEL, MODE_TILT
 from .core.errors import ProjectionError
+from .core.footprint import footprint_corners_world
 from .core.pose import level_pose, look_at
+from .core.report_export import (
+    RiggingItem,
+    export_analysis_to_json,
+    export_coverage_summary_to_csv,
+)
 from .core.specs import load_library_from_csv
 from .core.surfaces import CylindricalWall, PlanarWall, Surface
 from .core.throw import ProjectorSpec, image_size, required_lens_shift_v
@@ -31,6 +37,9 @@ from .scene_sync import (
     request_scene_sync,
     sync_analysis,
     sync_array,
+)
+from .scene_sync import (
+    _analysis_inputs as _sync_analysis_inputs,
 )
 from .scene_sync import (
     pose_from_matrix as _sync_pose_from_matrix,
@@ -760,6 +769,115 @@ class PJ_OT_import_spec_csv(Operator):
         return {"FINISHED"}
 
 
+def _collect_rigging_items(footprints) -> list[RiggingItem]:
+    items: list[RiggingItem] = []
+    for obj, spec, fp in sorted(footprints, key=lambda item: item[0].name):
+        props = obj.pj_projector
+        loc = obj.matrix_world.translation
+        rot = obj.matrix_world.to_euler("XYZ")
+        sz = image_size(max(fp.center_distance, 1e-3), spec)
+        corners = tuple(
+            (float(c[0]), float(c[1]), float(c[2])) for c in footprint_corners_world(fp)
+        )
+        items.append(
+            RiggingItem(
+                name=obj.name,
+                manufacturer=props.manufacturer,
+                model=props.model,
+                lens_model=props.lens_model,
+                mount_x=loc.x,
+                mount_y=loc.y,
+                mount_z=loc.z,
+                yaw_deg=math.degrees(rot.z),
+                pitch_deg=math.degrees(rot.x),
+                roll_deg=math.degrees(rot.y),
+                throw_distance=fp.center_distance,
+                image_width=sz.width,
+                image_height=sz.height,
+                lens_shift_v_pct=props.lens_shift_v * 100.0,
+                lens_shift_h_pct=props.lens_shift_h * 100.0,
+                lumens=spec.lumens,
+                weight_kg=spec.weight_kg,
+                corners_world=corners,
+            )
+        )
+    return items
+
+
+class PJ_OT_export_analysis(Operator):
+    """Export the coverage report, photometry and rigging schedule to JSON or CSV"""
+
+    bl_idname = "projection.export_analysis"
+    bl_label = "Export Analysis"
+    bl_description = (
+        "Save the structured analysis report and rigging schedule to a JSON or CSV file"
+    )
+    bl_options = {"REGISTER"}
+
+    filepath: StringProperty(subtype="FILE_PATH")
+    export_format: EnumProperty(
+        name="Format",
+        items=[
+            (
+                "JSON",
+                "JSON (.json)",
+                "Structured JSON containing full coverage, photometry and rigging data",
+            ),
+            (
+                "CSV",
+                "CSV (.csv)",
+                "Tabular CSV summary and rigging schedule for spreadsheets",
+            ),
+        ],
+        default="JSON",
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return context.scene.pj.has_report
+
+    def invoke(self, context, event):
+        if not self.filepath:
+            ext = ".json" if self.export_format == "JSON" else ".csv"
+            self.filepath = f"projection_analysis{ext}"
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
+
+    def execute(self, context):
+        if not self.filepath:
+            self.report({"WARNING"}, "No export file path specified")
+            return {"CANCELLED"}
+
+        scene = context.scene
+        try:
+            _wall_obj, _wall, footprints, report, _warnings = _sync_analysis_inputs(scene)
+        except ProjectionError as exc:
+            self.report({"ERROR"}, f"Analysis failed: {exc}")
+            return {"CANCELLED"}
+
+        rigging_items = _collect_rigging_items(footprints)
+
+        filepath = self.filepath
+        if self.export_format == "JSON":
+            if not filepath.lower().endswith(".json"):
+                filepath += ".json"
+            content = export_analysis_to_json(report, rigging_items)
+        else:
+            if not filepath.lower().endswith(".csv"):
+                filepath += ".csv"
+            content = export_coverage_summary_to_csv(report, rigging_items)
+
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(content)
+        except OSError as exc:
+            self.report({"ERROR"}, f"Failed to write export file: {exc}")
+            return {"CANCELLED"}
+
+        self.report({"INFO"}, f"Exported {self.export_format} to {filepath}")
+        return {"FINISHED"}
+
+
 _CLASSES = (
     PJ_OT_create_curved_wall,
     PJ_OT_create_flat_wall,
@@ -775,6 +893,7 @@ _CLASSES = (
     PJ_OT_clear_occluders,
     PJ_OT_apply_preset_spec,
     PJ_OT_import_spec_csv,
+    PJ_OT_export_analysis,
 )
 
 

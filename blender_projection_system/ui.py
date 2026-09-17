@@ -324,7 +324,9 @@ class PJ_PT_report(_Base):
             layout.label(text="Waiting for the live report", icon="INFO")
             return
 
-        layout.operator("projection.copy_report", icon="COPYDOWN")
+        row = layout.row(align=True)
+        row.operator("projection.copy_report", text="Copy Text", icon="COPYDOWN")
+        row.operator("projection.export_analysis", text="Export JSON / CSV", icon="EXPORT")
 
         info = layout.box()
         warn = None

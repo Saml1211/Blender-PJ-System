@@ -919,6 +919,30 @@ def main() -> None:
         "report carries ANSI/IEC disclaimer",
     )
 
+    # -- 4g. structured handoff export (increment #4) ---------------------
+    print("\n[4g] structured handoff export")
+    import json
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        json_path = str(Path(tmp_dir) / "test_export.json")
+        res_json = bpy.ops.projection.export_analysis(filepath=json_path, export_format="JSON")
+        check(res_json == {"FINISHED"}, "export_analysis JSON finished")
+        check(Path(json_path).exists(), "JSON export file exists on disk")
+        data = json.loads(Path(json_path).read_text(encoding="utf-8"))
+        check(data["schema_version"] == 1, "exported JSON schema version is 1")
+        check("wall" in data and "coverage" in data, "exported JSON has wall and coverage blocks")
+        check(len(data.get("rigging_schedule", [])) == 3, "exported JSON has 3 rigging entries")
+
+        csv_path = str(Path(tmp_dir) / "test_export.csv")
+        res_csv = bpy.ops.projection.export_analysis(filepath=csv_path, export_format="CSV")
+        check(res_csv == {"FINISHED"}, "export_analysis CSV finished")
+        check(Path(csv_path).exists(), "CSV export file exists on disk")
+        csv_content = Path(csv_path).read_text(encoding="utf-8")
+        check("Wall,Name" in csv_content, "exported CSV has summary metrics")
+        check("--- RIGGING SCHEDULE ---" in csv_content, "exported CSV has rigging table")
+
     # -- 5. teardown is clean ----------------------------------------------
     print("\n[5] clear analysis and unregister")
     other_scene = bpy.data.scenes.new("Other Projection Scene")

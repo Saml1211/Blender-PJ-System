@@ -44,6 +44,13 @@ from .photometry import (
     summarize_brightness,
 )
 from .pose import Pose, level_pose, look_at
+from .report_export import (
+    RiggingItem,
+    export_analysis_summary_to_csv,
+    export_analysis_to_json,
+    export_rigging_schedule_to_csv,
+    report_to_dict,
+)
 from .surfaces import CylindricalWall, SurfaceHit
 from .throw import (
     ImageSize,
@@ -78,6 +85,7 @@ __all__ = [
     "ProjectionError",
     "ProjectorPlacement",
     "ProjectorSpec",
+    "RiggingItem",
     "SurfaceHit",
     "ThrowReport",
     "analyze_coverage",
@@ -87,6 +95,9 @@ __all__ = [
     "compute_blend_zones",
     "compute_footprint",
     "describe_throw",
+    "export_analysis_summary_to_csv",
+    "export_analysis_to_json",
+    "export_rigging_schedule_to_csv",
     "format_placement",
     "format_report",
     "frustum_solid_angle",
@@ -101,6 +112,7 @@ __all__ = [
     "nits_to_foot_lamberts",
     "plan_array",
     "plan_projector",
+    "report_to_dict",
     "shift_from_half_image_percent",
     "summarize_brightness",
     "throw_distance_from_width",

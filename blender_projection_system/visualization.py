@@ -460,6 +460,13 @@ def apply_spec_to_object(obj: bpy.types.Object, spec, mode: str) -> None:
     p.max_lens_shift_h = spec.max_lens_shift_h
     p.throw_ratio_min = spec.throw_ratio_min
     p.throw_ratio_max = spec.throw_ratio_max
+    p.manufacturer = spec.manufacturer
+    p.model = spec.model
+    p.lens_model = spec.lens_model
+    p.native_contrast = spec.native_contrast
+    p.lens_transmission = spec.lens_transmission
+    p.source_url = spec.source_url
+    p.verified = spec.verified
     p.mount_mode = mode
 
 
@@ -479,6 +486,13 @@ def spec_from_object(obj: bpy.types.Object):
         max_lens_shift_h=p.max_lens_shift_h,
         throw_ratio_min=p.throw_ratio_min,
         throw_ratio_max=p.throw_ratio_max,
+        manufacturer=p.manufacturer,
+        model=p.model,
+        lens_model=p.lens_model,
+        native_contrast=p.native_contrast,
+        lens_transmission=p.lens_transmission,
+        source_url=p.source_url,
+        verified=p.verified,
         label=obj.name,
     )
 

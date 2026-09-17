@@ -812,6 +812,68 @@ def main() -> None:
     for o, matrix in zip(projectors, original_matrices, strict=True):
         o.matrix_world = matrix
 
+    # -- 4c. projector & lens spec library (increment #2) -----------------
+    print("\n[4c] projector & lens library")
+    # Verify properties exist on scene and projectors
+    for prop_name in (
+        "spec_manufacturer",
+        "spec_model",
+        "spec_lens",
+        "manufacturer",
+        "model",
+        "lens_model",
+        "native_contrast",
+        "lens_transmission",
+        "source_url",
+        "verified",
+    ):
+        check(hasattr(scene.pj, prop_name), f"scene exposes {prop_name}")
+    for prop_name in (
+        "manufacturer",
+        "model",
+        "lens_model",
+        "native_contrast",
+        "lens_transmission",
+        "source_url",
+        "verified",
+    ):
+        check(
+            all(hasattr(o.pj_projector, prop_name) for o in projectors),
+            f"projector exposes {prop_name}",
+        )
+
+    # Apply a known curated spec from the library
+    scene.pj.spec_manufacturer = "Panasonic"
+    scene.pj.spec_model = "PT-REQ12"
+    scene.pj.spec_lens = "ET-DLE150"
+    check(bpy.ops.projection.apply_preset_spec() == {"FINISHED"}, "apply_preset_spec finished")
+    check(approx(scene.pj.lumens, 12000.0), "rated lumens updated to 12000 lm")
+    check(scene.pj.aspect_w == 16 and scene.pj.aspect_h == 10, "native aspect updated to 16:10")
+    check(approx(scene.pj.throw_ratio_min, 1.30), "lens minimum TR updated to 1.30")
+    check(approx(scene.pj.throw_ratio_max, 1.89), "lens maximum TR updated to 1.89")
+    check(scene.pj.verified is True, "preset flags verified status")
+    check(bool(scene.pj.source_url), "preset cites source URL")
+
+    # Live sync converges with new spec
+    check(live_sync.flush_scene_sync(scene), "preset application converges live")
+    check(
+        all(o.pj_projector.model == "PT-REQ12" for o in projectors),
+        "array projectors inherit applied model spec",
+    )
+    check(
+        all(o.pj_projector.lens_model == "ET-DLE150" for o in projectors),
+        "array projectors inherit applied lens model",
+    )
+
+    # Out-of-range throw ratio warns rather than silently clamping (ADR 0002)
+    scene.pj.throw_ratio = 1.0  # below lens min 1.30
+    check(live_sync.flush_scene_sync(scene), "out-of-range TR edit converges live")
+    report_text_out_of_range = "\n".join(e.text for e in scene.pj.report_lines)
+    check(
+        "throw ratio" in report_text_out_of_range.lower() and "outside" in report_text_out_of_range.lower(),
+        "out-of-range throw ratio produces loud warning in report",
+    )
+
     # -- 5. teardown is clean ----------------------------------------------
     print("\n[5] clear analysis and unregister")
     other_scene = bpy.data.scenes.new("Other Projection Scene")

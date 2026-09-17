@@ -15,13 +15,14 @@ import math
 from dataclasses import replace
 
 import bpy
-from bpy.props import BoolProperty, FloatProperty, IntProperty
+from bpy.props import BoolProperty, FloatProperty, IntProperty, StringProperty
 from bpy.types import Operator
 
 from . import visualization as viz
 from .core.array import MODE_LEVEL, MODE_TILT
 from .core.errors import ProjectionError
 from .core.pose import level_pose, look_at
+from .core.specs import load_library_from_csv
 from .core.surfaces import CylindricalWall, PlanarWall, Surface
 from .core.throw import ProjectorSpec, image_size, required_lens_shift_v
 from .scene_ids import OWNER_ID, OWNER_KEY
@@ -271,8 +272,7 @@ class PJ_OT_create_flat_wall(Operator):
         facing_note = "toward -X" if abs(self.yaw_deg) < 1e-9 else f"at {self.yaw_deg:.0f} deg yaw"
         self.report(
             {"INFO"},
-            f"Created {wall.arc_length:.2f} m x {self.height:.2f} m flat wall "
-            f"facing {facing_note}",
+            f"Created {wall.arc_length:.2f} m x {self.height:.2f} m flat wall facing {facing_note}",
         )
         return {"FINISHED"}
 
@@ -664,6 +664,102 @@ class PJ_OT_clear_occluders(Operator):
         return {"FINISHED"}
 
 
+# ---------------------------------------------------------------------------
+# Hardware spec library (increment #2)
+# ---------------------------------------------------------------------------
+
+
+class PJ_OT_apply_preset_spec(Operator):
+    """Apply the selected hardware model and lens specification to planning inputs"""
+
+    bl_idname = "projection.apply_preset_spec"
+    bl_label = "Apply Spec Preset"
+    bl_description = "Apply the selected hardware model and lens specification to planning inputs"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        from . import properties
+
+        pj = context.scene.pj
+        lib = properties.session_library()
+        model = lib.get_model(pj.spec_manufacturer, pj.spec_model)
+        if model is None:
+            self.report({"WARNING"}, f"Model '{pj.spec_model}' not found in the library")
+            return {"CANCELLED"}
+        lens = lib.find_lens(model, pj.spec_lens) if model.lenses else None
+
+        pj.lumens = model.lumens
+        pj.aspect_w = model.aspect_w
+        pj.aspect_h = model.aspect_h
+        # Provenance rides with the planning inputs so generated arrays and
+        # manually added projectors carry the cited source, not just numbers.
+        pj.manufacturer = model.manufacturer
+        pj.model = model.model
+        pj.native_contrast = model.native_contrast
+        if lens is not None:
+            pj.throw_ratio_min = lens.throw_ratio_min
+            pj.throw_ratio_max = lens.throw_ratio_max
+            pj.max_lens_shift_v = lens.max_lens_shift_v
+            pj.max_lens_shift_h = lens.max_lens_shift_h
+            pj.lens_model = lens.model
+            pj.lens_transmission = lens.transmission_factor
+            pj.source_url = lens.source_url or model.source_url
+        else:
+            pj.throw_ratio_min = 0.0
+            pj.throw_ratio_max = 0.0
+            pj.lens_model = ""
+            pj.lens_transmission = 1.0
+            pj.source_url = model.source_url
+        pj.verified = model.verified
+
+        request_scene_sync(context.scene, SyncScope.ARRAY)
+
+        # Never clamp: a throw ratio the new lens cannot reach stays as typed
+        # and is warned about here and again by every later analysis (ADR 0002).
+        violations = lib.validate_throw(model, lens, pj.throw_ratio) if lens else []
+        if violations:
+            self.report({"WARNING"}, f"Applied {model.full_name}; " + "; ".join(violations))
+        else:
+            self.report({"INFO"}, f"Applied {model.full_name} spec")
+        return {"FINISHED"}
+
+
+class PJ_OT_import_spec_csv(Operator):
+    """Import custom projector specifications from a CSV file"""
+
+    bl_idname = "projection.import_spec_csv"
+    bl_label = "Import Spec CSV"
+    bl_description = "Import custom projector specifications from a CSV file"
+    bl_options = {"REGISTER", "UNDO"}
+
+    filepath: StringProperty(subtype="FILE_PATH")
+
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
+
+    def execute(self, context):
+        from . import properties
+
+        if not self.filepath:
+            self.report({"WARNING"}, "No CSV file selected")
+            return {"CANCELLED"}
+        try:
+            lib = load_library_from_csv(self.filepath)
+        except ProjectionError as exc:
+            self.report({"ERROR"}, f"CSV import failed: {exc}")
+            return {"CANCELLED"}
+        except OSError as exc:
+            self.report({"ERROR"}, f"Could not read CSV: {exc}")
+            return {"CANCELLED"}
+        properties.set_session_library(lib.models)
+        self.report(
+            {"INFO"},
+            f"Imported {len(lib.models)} model(s); available for this Blender session",
+        )
+        return {"FINISHED"}
+
+
 _CLASSES = (
     PJ_OT_create_curved_wall,
     PJ_OT_create_flat_wall,
@@ -677,6 +773,8 @@ _CLASSES = (
     PJ_OT_add_occluder,
     PJ_OT_remove_occluder,
     PJ_OT_clear_occluders,
+    PJ_OT_apply_preset_spec,
+    PJ_OT_import_spec_csv,
 )
 
 

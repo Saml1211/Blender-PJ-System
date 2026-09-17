@@ -112,9 +112,7 @@ def _is_occluder_mesh(self, obj):
     coverage result rather than an error (ADR 0002).
     """
     return bool(
-        obj
-        and obj.type == "MESH"
-        and not (getattr(obj, "pj_wall", None) and obj.pj_wall.is_wall)
+        obj and obj.type == "MESH" and not (getattr(obj, "pj_wall", None) and obj.pj_wall.is_wall)
     )
 
 
@@ -162,6 +160,77 @@ def _update_analysis(self, context):
 
 def _update_projector(self, context):
     _request_scope(self, context, "ANALYSIS")
+
+
+# ---------------------------------------------------------------------------
+# Hardware spec library pickers (increment #2)
+# ---------------------------------------------------------------------------
+
+#: Models imported from a user CSV during this Blender session. They overlay
+#: the bundled rows by (manufacturer, model) key. Deliberately not persisted:
+#: a saved .blend silently referring to a missing CSV would misreport
+#: hardware, so re-importing after reopening is the honest path.
+_SESSION_MODELS: list = []
+
+
+def set_session_library(models) -> None:
+    """Replace the session spec-library overlay with ``models``."""
+    _SESSION_MODELS.clear()
+    _SESSION_MODELS.extend(models)
+
+
+def session_library():
+    """The bundled library overlaid with any user-imported session rows.
+
+    User rows win on (manufacturer, model) so a corrected CSV can replace a
+    bundled entry without editing the add-on.
+    """
+    from .core.specs import SpecLibrary, load_builtin_library
+
+    try:
+        builtin = load_builtin_library()
+    except Exception:
+        builtin = SpecLibrary(models=[])
+    merged = {(m.manufacturer.lower(), m.model.lower()): m for m in builtin.models}
+    for entry in _SESSION_MODELS:
+        merged[(entry.manufacturer.lower(), entry.model.lower())] = entry
+    return SpecLibrary(models=list(merged.values()))
+
+
+def _spec_manufacturer_items(self, context):
+    lib = session_library()
+    return [(m, m, f"Projectors from {m}", i) for i, m in enumerate(lib.all_manufacturers())]
+
+
+def _spec_model_items(self, context):
+    lib = session_library()
+    mfr = getattr(self, "spec_manufacturer", "")
+    models = lib.models_for_manufacturer(mfr)
+    if not models and lib.models:
+        models = lib.models_for_manufacturer(lib.all_manufacturers()[0])
+    return [
+        (m.model, m.model, f"{m.lumens:.0f} lm, {m.aspect_w}:{m.aspect_h}", i)
+        for i, m in enumerate(models)
+    ]
+
+
+def _spec_lens_items(self, context):
+    lib = session_library()
+    mfr = getattr(self, "spec_manufacturer", "")
+    model_name = getattr(self, "spec_model", "")
+    model = lib.get_model(mfr, model_name)
+    if model is None and lib.models:
+        model = lib.models[0]
+    lenses = model.lenses if model else ()
+    return [
+        (
+            lens.model,
+            lens.model,
+            f"TR {lens.throw_ratio_min:.2f}-{lens.throw_ratio_max:.2f}:1",
+            i,
+        )
+        for i, lens in enumerate(lenses)
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -382,6 +451,33 @@ class PJ_PG_Projector(PropertyGroup):
         update=_update_projector,
     )
 
+    # -- provenance metadata from the spec library (core/specs.py) ---------
+    # Written by apply_spec_to_object; describes the *stated* hardware only
+    # and never alters a calculation (ADR 0002).
+    manufacturer: StringProperty(name="Manufacturer", default="")
+    model: StringProperty(name="Model", default="")
+    lens_model: StringProperty(name="Lens", default="")
+    native_contrast: FloatProperty(
+        name="Native Contrast",
+        description="Native (not dynamic) contrast ratio of the projector body",
+        default=2000.0,
+        min=1.0,
+    )
+    lens_transmission: FloatProperty(
+        name="Lens Transmission",
+        description="Fraction of projector light the fitted lens delivers",
+        default=1.0,
+        min=0.01,
+        max=1.0,
+        precision=3,
+    )
+    source_url: StringProperty(name="Source URL", default="")
+    verified: BoolProperty(
+        name="Verified Spec",
+        description="Numbers transcribed from the cited source, not measured",
+        default=False,
+    )
+
     # -- computed, written by the analysis operator ------------------------
     calc_throw_distance: FloatProperty(name="Throw Distance", default=0.0, unit="LENGTH")
     calc_image_width: FloatProperty(name="Image Width", default=0.0, unit="LENGTH")
@@ -391,9 +487,7 @@ class PJ_PG_Projector(PropertyGroup):
     calc_max_incidence_deg: FloatProperty(name="Worst Incidence", default=0.0)
     calc_mean_nits: FloatProperty(name="Mean Luminance", default=0.0)
     calc_occluded_cells: IntProperty(name="Occluded Cells", default=0)
-    calc_occluded_ratio: FloatProperty(
-        name="Occluded Ratio", default=0.0, min=0.0, max=1.0
-    )
+    calc_occluded_ratio: FloatProperty(name="Occluded Ratio", default=0.0, min=0.0, max=1.0)
     has_result: BoolProperty(name="Has Result", default=False)
 
 
@@ -478,6 +572,35 @@ class PJ_PG_Scene(PropertyGroup):
     max_lens_shift_v: FloatProperty(
         name="Max Vertical Shift", default=0.5, min=0.0, max=2.0, update=_update_array
     )
+    max_lens_shift_h: FloatProperty(
+        name="Max Horizontal Shift", default=0.15, min=0.0, max=2.0, update=_update_array
+    )
+    throw_ratio_min: FloatProperty(
+        name="Lens Min TR",
+        description="Shortest throw ratio the fitted lens supports (0 to skip the check)",
+        default=0.0,
+        min=0.0,
+        precision=3,
+    )
+    throw_ratio_max: FloatProperty(
+        name="Lens Max TR",
+        description="Longest throw ratio the fitted lens supports (0 to skip the check)",
+        default=0.0,
+        min=0.0,
+        precision=3,
+    )
+
+    # -- hardware spec library pickers and applied provenance ---------------
+    spec_manufacturer: EnumProperty(name="Manufacturer", items=_spec_manufacturer_items)
+    spec_model: EnumProperty(name="Model", items=_spec_model_items)
+    spec_lens: EnumProperty(name="Lens", items=_spec_lens_items)
+    manufacturer: StringProperty(name="Manufacturer", default="")
+    model: StringProperty(name="Model", default="")
+    lens_model: StringProperty(name="Lens", default="")
+    native_contrast: FloatProperty(default=2000.0, min=1.0)
+    lens_transmission: FloatProperty(default=1.0, min=0.01, max=1.0, precision=3)
+    source_url: StringProperty(default="")
+    verified: BoolProperty(default=False)
 
     # -- analysis settings --------------------------------------------------
     samples: IntProperty(

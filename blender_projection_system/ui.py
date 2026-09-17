@@ -97,6 +97,28 @@ class PJ_PT_projectors(_Base):
         pj = context.scene.pj
 
         box = layout.box()
+        box.label(text="Hardware Library", icon="BOOK")
+        col = box.column(align=True)
+        col.prop(pj, "spec_manufacturer", text="Brand")
+        col.prop(pj, "spec_model", text="Model")
+        col.prop(pj, "spec_lens", text="Lens")
+        row = col.row(align=True)
+        row.operator("projection.apply_preset_spec", text="Apply Preset", icon="CHECKMARK")
+        row.operator("projection.import_spec_csv", text="Import CSV", icon="IMPORT")
+        if pj.throw_ratio_min > 0.0 and not (
+            pj.throw_ratio_min <= pj.throw_ratio <= pj.throw_ratio_max
+        ):
+            warn_row = col.row()
+            warn_row.alert = True
+            warn_row.label(
+                text=(
+                    f"Throw ratio outside lens range "
+                    f"[{pj.throw_ratio_min:.2f}, {pj.throw_ratio_max:.2f}]"
+                ),
+                icon="ERROR",
+            )
+
+        box = layout.box()
         box.label(text="Lens & Output", icon="CAMERA_DATA")
         col = box.column(align=True)
         col.prop(pj, "throw_ratio")
@@ -173,6 +195,15 @@ class PJ_PT_selected_projector(_Base):
             box.label(text="Vertical shift exceeds the lens limit", icon="ERROR")
         if abs(p.lens_shift_h) > p.max_lens_shift_h:
             box.label(text="Horizontal shift exceeds the lens limit", icon="ERROR")
+
+        if p.model:
+            box = layout.box()
+            box.label(
+                text=f"Model: {p.manufacturer} {p.model} ({p.lens_model})",
+                icon="CAMERA_DATA",
+            )
+            if p.verified:
+                box.label(text="Verified manufacturer datasheet", icon="CHECKMARK")
 
         if not p.has_result:
             layout.label(text="Waiting for live analysis results", icon="INFO")

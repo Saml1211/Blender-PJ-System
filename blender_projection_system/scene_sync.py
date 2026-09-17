@@ -94,6 +94,16 @@ def scene_spec(scene: bpy.types.Scene) -> ProjectorSpec:
         aspect_h=pj.aspect_h,
         lumens=pj.lumens,
         max_lens_shift_v=pj.max_lens_shift_v,
+        max_lens_shift_h=pj.max_lens_shift_h,
+        throw_ratio_min=pj.throw_ratio_min,
+        throw_ratio_max=pj.throw_ratio_max,
+        manufacturer=pj.manufacturer,
+        model=pj.model,
+        lens_model=pj.lens_model,
+        native_contrast=pj.native_contrast,
+        lens_transmission=pj.lens_transmission,
+        source_url=pj.source_url,
+        verified=pj.verified,
     )
 
 

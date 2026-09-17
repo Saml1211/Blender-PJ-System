@@ -32,9 +32,9 @@ from .vectors import Vec3, normalize
 
 #: Image-plane corner order used everywhere in this package.
 CORNER_UV: tuple[tuple[float, float], ...] = (
-    (-0.5, 0.5),   # top-left
-    (0.5, 0.5),    # top-right
-    (0.5, -0.5),   # bottom-right
+    (-0.5, 0.5),  # top-left
+    (0.5, 0.5),  # top-right
+    (0.5, -0.5),  # bottom-right
     (-0.5, -0.5),  # bottom-left
 )
 
@@ -61,6 +61,20 @@ class ProjectorSpec:
     throw_ratio_max: float = 0.0
     label: str = ""
 
+    # -- provenance metadata from the spec library (core/specs.py) --------
+    # All defaulted so hand-built specs (and every pre-#2 caller) are valid
+    # unchanged. These describe the *stated* hardware, they are never used
+    # silently to alter a calculation: out-of-range values warn, never clamp
+    # (ADR 0002).
+    manufacturer: str = ""
+    model: str = ""
+    lens_model: str = ""
+    native_contrast: float = 2000.0
+    lens_transmission: float = 1.0
+    weight_kg: float = 0.0
+    source_url: str = ""
+    verified: bool = False
+
     def __post_init__(self) -> None:
         require_positive("throw_ratio", self.throw_ratio)
         require_positive("aspect width", self.aspect_w)
@@ -78,6 +92,19 @@ class ProjectorSpec:
             raise ProjectionError("maximum lens shifts must not be negative")
         if self.throw_ratio_min < 0 or self.throw_ratio_max < 0:
             raise ProjectionError("lens throw-ratio limits must not be negative")
+        require_finite("native contrast", self.native_contrast)
+        require_finite("lens transmission", self.lens_transmission)
+        require_finite("weight", self.weight_kg)
+        if self.native_contrast < 1.0:
+            raise ProjectionError(
+                f"native contrast must be at least 1:1, got {self.native_contrast}"
+            )
+        if not 0.0 < self.lens_transmission <= 1.0:
+            raise ProjectionError(
+                f"lens transmission must be in (0, 1], got {self.lens_transmission}"
+            )
+        if self.weight_kg < 0.0:
+            raise ProjectionError(f"weight must not be negative, got {self.weight_kg}")
 
     @property
     def aspect(self) -> float:

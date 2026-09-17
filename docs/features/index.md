@@ -36,6 +36,33 @@ Configured limits are checked and reported.
 
 ---
 
+## Projector & lens spec library — `core/specs.py`
+
+A local, versioned specification library keyed by manufacturer and model.
+Eliminates manual transcription of datasheets and validates planning inputs
+against real hardware optics.
+
+Ships with a bundled starter catalog of verified venue/staging projectors
+(`core/data/projector_library.json`) covering Christie, Panasonic, Barco, and
+Epson lines with their complete lens lineups. Users can import custom CSV files
+(`projection.import_spec_csv`) to extend or override library models without
+code changes.
+
+**Honest validation (ADR 0002):**
+- **Warn, never clamp:** applying a preset checks whether the current throw ratio
+  and shift settings fall within the fitted lens's rated limits (`TR_min`..`TR_max`,
+  `max_shift_v`, `max_shift_h`). Out-of-range values stay as typed and produce
+  loud warnings in both the operator report and the coverage report — numbers
+  are never silently altered to look valid.
+- **Cited provenance:** every bundled row records a `source_url` pointing to the
+  official manufacturer datasheet or throw calculator, and a `verified` boolean
+  flag marking entries confirmed against primary sources.
+- **Lens transmission factor:** each lens records a transmission factor
+  (typically 0.75–0.92, accounting for optical elements and zoom loss),
+  unblocking realistic photometric calculations.
+
+---
+
 ## Curved surfaces — `core/surfaces.py`
 
 A `CylindricalWall` is a vertical-axis cylinder segment: base centre, radius,

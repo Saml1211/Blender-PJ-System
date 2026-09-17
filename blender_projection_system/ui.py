@@ -264,7 +264,17 @@ class PJ_PT_analysis(_Base):
         row.prop(pj, "grid_z", text="Height")
         col.prop(pj, "screen_gain")
         col.prop(pj, "blend_model", text="Overlap")
+        if pj.blend_model == "GAMMA_RAMP":
+            col.prop(pj, "blend_gamma", text="Blend Gamma")
         col.prop(pj, "draw_frustums")
+
+        derate_box = box.box()
+        derate_box.prop(pj, "use_derate_chain", text="Lumens Derate Chain")
+        if pj.use_derate_chain:
+            d_col = derate_box.column(align=True)
+            d_col.prop(pj, "derate_production_tolerance", text="Prod. Limit (ISO 21118)")
+            d_col.prop(pj, "derate_picture_mode", text="Picture Mode")
+            d_col.prop(pj, "derate_aging", text="Aging Factor")
 
         box = layout.box()
         box.label(text="Obstacles / Occlusion", icon="SNAP_VOLUME")

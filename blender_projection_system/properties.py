@@ -641,11 +641,65 @@ class PJ_PG_Scene(PropertyGroup):
             (
                 "LINEAR_RAMP",
                 "Linear blend ramp",
-                "Across each overlap one image ramps down while the other ramps up, "
-                "as an edge-blending processor would",
+                "Across each overlap one image ramps down while the other ramps up "
+                "with linear weighting (gamma = 1.0)",
+            ),
+            (
+                "GAMMA_RAMP",
+                "Gamma blend ramp",
+                "Complementary soft-edge ramps shaped with a custom gamma exponent "
+                "(Dataton WATCHOUT convention)",
             ),
         ],
         default="RAW",
+        update=_update_analysis,
+    )
+    blend_gamma: FloatProperty(
+        name="Blend Gamma",
+        description=(
+            "Soft-edge blend gamma exponent (default 1.0 per Dataton WATCHOUT convention; "
+            "range 0.5 to 1.5). Shapes the transition to compensate for optical/display response"
+        ),
+        default=1.0,
+        min=0.5,
+        max=1.5,
+        precision=2,
+        update=_update_analysis,
+    )
+    use_derate_chain: BoolProperty(
+        name="Lumens Derate Chain",
+        description=(
+            "Apply explicit derates to rated projector lumens: ISO/IEC 21118 production limit, "
+            "picture mode factor, lamp/laser aging, and fitted lens transmission"
+        ),
+        default=True,
+        update=_update_analysis,
+    )
+    derate_production_tolerance: FloatProperty(
+        name="Production Limit",
+        description="Manufacturing variance lower limit factor (default 0.80 per ISO/IEC 21118:2012 §4.1/§6.1)",
+        default=0.80,
+        min=0.50,
+        max=1.00,
+        precision=2,
+        update=_update_analysis,
+    )
+    derate_picture_mode: FloatProperty(
+        name="Picture Mode",
+        description="Calibrated/standard picture mode factor vs uncalibrated boost mode (default 0.85)",
+        default=0.85,
+        min=0.10,
+        max=1.00,
+        precision=2,
+        update=_update_analysis,
+    )
+    derate_aging: FloatProperty(
+        name="Aging Factor",
+        description="Lamp or laser aging degradation factor at service point / end of life (default 0.80)",
+        default=0.80,
+        min=0.10,
+        max=1.00,
+        precision=2,
         update=_update_analysis,
     )
     screen_gain: FloatProperty(

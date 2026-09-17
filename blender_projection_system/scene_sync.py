@@ -19,7 +19,7 @@ from .core.array import format_placement, plan_array
 from .core.coverage import analyze_coverage, format_report
 from .core.errors import ProjectionError
 from .core.footprint import compute_footprint
-from .core.photometry import BlendModel, brightness_warnings
+from .core.photometry import BlendModel, DerateChain, brightness_warnings
 from .core.pose import Pose
 from .core.throw import ProjectorSpec, describe_throw, image_size
 from .scene_ids import OBJECT_ROLE_KEY, OWNER_ID, OWNER_KEY
@@ -252,6 +252,16 @@ def _analysis_inputs(scene: bpy.types.Scene):
         warnings.extend(footprint.warnings)
         warnings.extend(describe_throw(max(footprint.center_distance, 1e-3), spec).warnings)
 
+    derate_chain = (
+        DerateChain(
+            production_tolerance=pj.derate_production_tolerance,
+            picture_mode_factor=pj.derate_picture_mode,
+            aging_factor=pj.derate_aging,
+        )
+        if pj.use_derate_chain
+        else None
+    )
+
     report = analyze_coverage(
         [footprint for _obj, _spec, footprint in footprints],
         wall,
@@ -262,6 +272,8 @@ def _analysis_inputs(scene: bpy.types.Scene):
         # Obstacles are always tested, even with the shadow overlay switched
         # off: the numbers in the report must not depend on what is drawn.
         occlusion_caster=viz.build_occlusion_caster(scene),
+        derate_chain=derate_chain,
+        blend_gamma=pj.blend_gamma,
     )
     warnings.extend(report.warnings)
     if report.brightness is not None:

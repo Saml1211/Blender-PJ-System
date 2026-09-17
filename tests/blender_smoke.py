@@ -874,6 +874,24 @@ def main() -> None:
         "out-of-range throw ratio produces loud warning in report",
     )
 
+    # -- 4d. lumens derate chain & blend gamma (increment #3a) -----------
+    print("\n[4d] lumens derate chain & blend gamma")
+    for prop_name in (
+        "blend_gamma",
+        "use_derate_chain",
+        "derate_production_tolerance",
+        "derate_picture_mode",
+        "derate_aging",
+    ):
+        check(hasattr(scene.pj, prop_name), f"scene exposes {prop_name}")
+
+    scene.pj.blend_model = "GAMMA_RAMP"
+    scene.pj.blend_gamma = 1.25
+    check(live_sync.flush_scene_sync(scene), "gamma blend ramp converges live")
+    report_text_gamma = "\n".join(e.text for e in scene.pj.report_lines)
+    check("gamma-ramp blend model" in report_text_gamma, "report records gamma blend model")
+    check("Bands (rated / typical / worst-case):" in report_text_gamma, "report displays derate bands")
+
     # -- 5. teardown is clean ----------------------------------------------
     print("\n[5] clear analysis and unregister")
     other_scene = bpy.data.scenes.new("Other Projection Scene")

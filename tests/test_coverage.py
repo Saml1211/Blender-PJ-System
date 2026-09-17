@@ -314,3 +314,39 @@ def test_format_report_names_the_blend_model_when_blending_is_applied(wall):
         )
     )
     assert any("linear-ramp blend model" in line for line in ramp_lines)
+
+
+def test_coverage_report_with_derate_chain_and_gamma_blend(wall):
+    spec = ProjectorSpec(throw_ratio=1.5, lumens=6000.0, lens_transmission=0.90)
+    a = _projector_at(wall, wall.arc_length * 0.4, 4.5, spec, "Left")
+    b = _projector_at(wall, wall.arc_length * 0.6, 4.5, spec, "Right")
+    chain = ph.DerateChain(
+        production_tolerance=0.80,
+        picture_mode_factor=0.85,
+        aging_factor=0.80,
+    )
+    report = analyze_coverage(
+        [a, b],
+        wall,
+        grid_s=60,
+        grid_z=16,
+        blend_model=ph.BlendModel.GAMMA_RAMP,
+        blend_gamma=1.2,
+        derate_chain=chain,
+    )
+    assert report.blend_model == ph.BlendModel.GAMMA_RAMP
+    assert report.blend_gamma == 1.2
+    assert report.derate_chain == chain
+    assert report.brightness is not None
+    assert report.brightness.rated_band is not None
+    assert report.brightness.typical_band is not None
+    assert report.brightness.worst_case_band is not None
+
+    lines = format_report(report)
+    text = "\n".join(lines)
+    assert "Bands (rated / typical / worst-case):" in text
+    assert "gamma-ramp blend model" in text
+    assert "gamma=1.20" in text
+
+    assert len(report.blend_zones) == 1
+    assert report.blend_zones[0].guidance != ""

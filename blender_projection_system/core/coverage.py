@@ -22,9 +22,12 @@ from .occlusion import RAY_TOLERANCE, OcclusionCaster
 from .photometry import (
     BlendModel,
     BrightnessReport,
+    DerateChain,
     assumptions_for_blend_model,
+    blend_ramp_luminance_error,
     illuminance_at,
     linear_ramp_weight,
+    overlap_guidance,
     summarize_brightness,
 )
 from .surfaces import Surface
@@ -97,6 +100,14 @@ class BlendZone:
     def width(self) -> float:
         return self.interval.length
 
+    @property
+    def mean_overlap_fraction(self) -> float:
+        return 0.5 * (self.overlap_fraction_left + self.overlap_fraction_right)
+
+    @property
+    def guidance(self) -> str:
+        return overlap_guidance(self.mean_overlap_fraction)
+
 
 @dataclass
 class CoverageReport:
@@ -125,6 +136,8 @@ class CoverageReport:
     projector_spans: list[tuple[str, Interval]] = field(default_factory=list)
     brightness: BrightnessReport | None = None
     blend_model: BlendModel = BlendModel.RAW
+    blend_gamma: float = 1.0
+    derate_chain: DerateChain | None = None
     """How overlapping illuminance was combined - see :class:`BlendModel`."""
     projector_occlusions: dict[str, ProjectorOcclusion] = field(default_factory=dict)
     """Per-projector occlusion tallies; empty when no occluders are in play."""
@@ -193,6 +206,8 @@ def analyze_coverage(
     screen_gain: float = 1.0,
     blend_model: BlendModel = BlendModel.RAW,
     occlusion_caster: OcclusionCaster | None = None,
+    derate_chain: DerateChain | None = None,
+    blend_gamma: float = 1.0,
 ) -> CoverageReport:
     """Rasterised coverage, gap, overlap and brightness analysis for a wall.
 
@@ -275,7 +290,7 @@ def analyze_coverage(
             )
         count = len(contributions)
         if count:
-            lux = _combined_illuminance(contributions, s, wall, blend_model)
+            lux = _combined_illuminance(contributions, s, wall, blend_model, blend_gamma)
             report.covered_cells += 1
             lux_grid.append(lux)
             covered_z.append(z)
@@ -295,9 +310,14 @@ def analyze_coverage(
 
     if lux_grid:
         report.brightness = summarize_brightness(
-            lux_grid, screen_gain, assumptions_for_blend_model(blend_model)
+            lux_grid,
+            screen_gain,
+            assumptions_for_blend_model(blend_model, blend_gamma, derate_chain),
+            derate_chain=derate_chain,
         )
     report.blend_model = blend_model
+    report.blend_gamma = blend_gamma
+    report.derate_chain = derate_chain
 
     report.warnings.extend(_coverage_warnings(report))
     return report
@@ -318,16 +338,18 @@ def _combined_illuminance(
     s: float,
     wall: Surface,
     blend_model: BlendModel,
+    blend_gamma: float = 1.0,
 ) -> float:
     """Combine per-projector illuminance for one wall cell.
 
     Raw addition everywhere except: exactly two overlapping images under
-    :attr:`BlendModel.LINEAR_RAMP` get the complementary processor ramps.
-    Triple overlaps stay additive - they are flagged as placement errors,
-    not blends.
+    :attr:`BlendModel.LINEAR_RAMP` or :attr:`BlendModel.GAMMA_RAMP` get the
+    complementary processor ramps. Triple overlaps stay additive - they are
+    flagged as placement errors, not blends.
     """
-    if blend_model is BlendModel.LINEAR_RAMP and len(contributions) == 2:
-        blended = _ramp_weighted_pair(contributions, s, wall.arc_length)
+    if blend_model in (BlendModel.LINEAR_RAMP, BlendModel.GAMMA_RAMP) and len(contributions) == 2:
+        gamma = 1.0 if blend_model is BlendModel.LINEAR_RAMP else blend_gamma
+        blended = _ramp_weighted_pair(contributions, s, wall.arc_length, gamma=gamma)
         if blended is not None:
             return blended
     return sum(lux for _, lux in contributions)
@@ -337,6 +359,7 @@ def _ramp_weighted_pair(
     contributions: list[tuple[Footprint, float]],
     s: float,
     circumference: float,
+    gamma: float = 1.0,
 ) -> float | None:
     """Ramp-weighted illuminance for an exactly-two-image cell.
 
@@ -361,8 +384,8 @@ def _ramp_weighted_pair(
         if circumference > 0.0
         else s
     )
-    w_l = linear_ramp_weight(s_eval, common.start, common.end, side="left")
-    w_r = linear_ramp_weight(s_eval, common.start, common.end, side="right")
+    w_l = linear_ramp_weight(s_eval, common.start, common.end, side="left", gamma=gamma)
+    w_r = linear_ramp_weight(s_eval, common.start, common.end, side="right", gamma=gamma)
     a_on_left = 0.5 * (ia.start + ia.end) <= 0.5 * (ib.start + ib.end)
     return (w_l * lux_a + w_r * lux_b) if a_on_left else (w_r * lux_a + w_l * lux_b)
 
@@ -584,7 +607,8 @@ def format_report(report: CoverageReport) -> list[str]:
         lines.append(
             f"  blend {zone.left} | {zone.right}: {zone.width:.2f} m "
             f"({zone.overlap_fraction_left * 100:.0f}% / "
-            f"{zone.overlap_fraction_right * 100:.0f}% of image width)"
+            f"{zone.overlap_fraction_right * 100:.0f}% of image width) - "
+            f"{zone.guidance}"
         )
     for gap in report.gaps:
         lines.append(f"  GAP: arc {gap.start:.2f} - {gap.end:.2f} m ({gap.length:.2f} m)")
@@ -603,6 +627,18 @@ def format_report(report: CoverageReport) -> list[str]:
             f"({b.mean_foot_lamberts:.1f} fL), range {b.min_nits:.0f}-{b.max_nits:.0f} nits, "
             f"uniformity {b.uniformity:.2f}"
         )
+        if b.rated_band and b.typical_band and b.worst_case_band:
+            lines.append(
+                f"  Bands (rated / typical / worst-case): "
+                f"{b.rated_band.mean_nits:.0f} / {b.typical_band.mean_nits:.0f} / {b.worst_case_band.mean_nits:.0f} nits "
+                f"({b.rated_band.mean_lux:.0f} / {b.typical_band.mean_lux:.0f} / {b.worst_case_band.mean_lux:.0f} lux)"
+            )
     if report.blend_model is BlendModel.LINEAR_RAMP:
         lines.append("Overlap luminance uses a linear-ramp blend model; see brightness assumptions")
+    elif report.blend_model is BlendModel.GAMMA_RAMP:
+        err = blend_ramp_luminance_error(report.blend_gamma)
+        lines.append(
+            f"Overlap luminance uses a gamma-ramp blend model (gamma={report.blend_gamma:.2f}, "
+            f"theoretical mid-zone error {err * 100:+.1f}%); see brightness assumptions"
+        )
     return lines

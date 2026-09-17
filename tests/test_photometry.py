@@ -210,3 +210,89 @@ def test_assumptions_for_linear_ramp_describe_the_ramp():
     assumptions = ph.assumptions_for_blend_model(ph.BlendModel.LINEAR_RAMP)
     assert any("linear" in a.lower() for a in assumptions)
     assert not any("no blend" in a for a in assumptions)
+
+
+def test_derate_chain_properties_and_bands():
+    chain = ph.DerateChain(
+        production_tolerance=0.80,
+        picture_mode_factor=0.85,
+        aging_factor=0.80,
+        lens_transmission=0.90,
+    )
+    assert chain.rated_multiplier == pytest.approx(0.90)
+    # typical: 0.90 * 0.85 * 0.90 = 0.6885
+    assert chain.typical_multiplier == pytest.approx(0.90 * 0.85 * 0.90)
+    # worst-case: 0.90 * 0.80 * 0.85 * 0.80 = 0.4896
+    assert chain.worst_case_multiplier == pytest.approx(0.90 * 0.80 * 0.85 * 0.80)
+
+    # effective lumens
+    assert chain.effective_lumens(6000.0, "rated") == pytest.approx(5400.0)
+    assert chain.effective_lumens(6000.0, "typical") == pytest.approx(4131.0)
+    assert chain.effective_lumens(6000.0, "worst_case") == pytest.approx(2937.6)
+
+
+def test_derate_chain_rejects_invalid_factors():
+    with pytest.raises(ProjectionError):
+        ph.DerateChain(production_tolerance=-0.5)
+    with pytest.raises(ProjectionError):
+        ph.DerateChain(picture_mode_factor=0.0)
+    with pytest.raises(ProjectionError):
+        ph.DerateChain(aging_factor=float("nan"))
+    with pytest.raises(ProjectionError):
+        ph.DerateChain(lens_transmission=float("inf"))
+
+
+def test_summarize_brightness_with_derate_chain():
+    samples = [1000.0, 2000.0, 3000.0]
+    chain = ph.DerateChain(
+        production_tolerance=0.80,
+        picture_mode_factor=0.85,
+        aging_factor=0.80,
+    )
+    report = ph.summarize_brightness(samples, screen_gain=1.0, derate_chain=chain)
+    assert report.derate_chain == chain
+    assert report.rated_band is not None
+    assert report.typical_band is not None
+    assert report.worst_case_band is not None
+
+    assert report.rated_band.mean_lux == pytest.approx(2000.0)
+    assert report.typical_band.mean_lux == pytest.approx(2000.0 * chain.operational_typical_factor)
+    assert report.worst_case_band.mean_lux == pytest.approx(2000.0 * chain.operational_worst_case_factor)
+    assert report.worst_case_band.mean_nits < report.typical_band.mean_nits < report.rated_band.mean_nits
+
+
+def test_gamma_blend_ramp_weight_and_alias():
+    # gamma = 1.0 matches linear
+    assert ph.linear_ramp_weight(3.0, 2.0, 4.0, side="left", gamma=1.0) == pytest.approx(0.5)
+    assert ph.gamma_ramp_weight(3.0, 2.0, 4.0, side="left", gamma=1.0) == pytest.approx(0.5)
+
+    # gamma = 1.2
+    assert ph.linear_ramp_weight(3.0, 2.0, 4.0, side="left", gamma=1.2) == pytest.approx(0.5**1.2)
+    assert ph.linear_ramp_weight(3.0, 2.0, 4.0, side="right", gamma=1.2) == pytest.approx(0.5**1.2)
+
+    with pytest.raises(ProjectionError, match="positive"):
+        ph.linear_ramp_weight(3.0, 2.0, 4.0, side="left", gamma=-0.5)
+
+
+def test_blend_ramp_luminance_error():
+    assert ph.blend_ramp_luminance_error(1.0) == pytest.approx(0.0)
+    assert ph.blend_ramp_luminance_error(0.8) == pytest.approx(2**0.2 - 1.0)
+    assert ph.blend_ramp_luminance_error(1.2) == pytest.approx(2**-0.2 - 1.0)
+
+
+def test_overlap_guidance_tiers():
+    assert "<5%" in ph.overlap_guidance(0.03)
+    assert "<10%" in ph.overlap_guidance(0.08)
+    assert "10-20%" in ph.overlap_guidance(0.15)
+    assert ">20%" in ph.overlap_guidance(0.25)
+
+
+def test_assumptions_mention_derate_chain_and_gamma_ramp():
+    chain = ph.DerateChain(production_tolerance=0.80, picture_mode_factor=0.85)
+    assumptions = ph.assumptions_for_blend_model(
+        ph.BlendModel.GAMMA_RAMP, gamma=1.2, derate_chain=chain
+    )
+    text = " ".join(assumptions)
+    assert "derate chain" in text
+    assert "gamma-shaped ramps" in text
+    assert "gamma=1.20" in text

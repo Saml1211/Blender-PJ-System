@@ -350,3 +350,46 @@ def test_coverage_report_with_derate_chain_and_gamma_blend(wall):
 
     assert len(report.blend_zones) == 1
     assert report.blend_zones[0].guidance != ""
+
+
+def test_coverage_report_with_ambient_effective_contrast(wall):
+    spec = ProjectorSpec(throw_ratio=1.5, lumens=5000.0, native_contrast=2500.0)
+    a = _projector_at(wall, wall.arc_length * 0.4, 4.5, spec, "Left")
+    b = _projector_at(wall, wall.arc_length * 0.6, 4.5, spec, "Right")
+    report = analyze_coverage(
+        [a, b],
+        wall,
+        grid_s=60,
+        grid_z=16,
+        ambient_lux=50.0,
+        iscr_category=ph.ISCRCategory.BASIC_DECISION_MAKING,
+        target_contrast_ratio=15.0,
+    )
+    assert report.contrast is not None
+    assert report.contrast.ambient_lux == 50.0
+    assert report.contrast.target_category == ph.ISCRCategory.BASIC_DECISION_MAKING
+    assert report.contrast.user_target_ratio == 15.0
+    assert report.contrast.min_contrast > 0.0
+
+    lines = format_report(report)
+    text = "\n".join(lines)
+    assert "Effective contrast [target: Basic Decision Making]:" in text
+    assert "ANSI/AVIXA V201.01:2021" in text
+    assert "this tool does not certify compliance" in text
+
+
+def test_effective_contrast_warnings(wall):
+    # Dim projector with high ambient light fails contrast target
+    spec = ProjectorSpec(throw_ratio=2.0, lumens=500.0, native_contrast=500.0)
+    proj = _projector_at(wall, wall.arc_length * 0.5, 4.0, spec, "Dim")
+    report = analyze_coverage(
+        [proj],
+        wall,
+        grid_s=40,
+        grid_z=10,
+        ambient_lux=200.0,
+        target_contrast_ratio=50.0,
+    )
+    assert report.contrast is not None
+    assert report.contrast.meets_user_target is False
+    assert any("fails user target" in w for w in report.warnings)

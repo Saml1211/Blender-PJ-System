@@ -892,6 +892,20 @@ def main() -> None:
     check("gamma-ramp blend model" in report_text_gamma, "report records gamma blend model")
     check("Bands (rated / typical / worst-case):" in report_text_gamma, "report displays derate bands")
 
+    # -- 4e. ambient effective contrast (increment #3b) -------------------
+    print("\n[4e] ambient effective contrast")
+    for prop_name in ("ambient_lux", "iscr_category", "target_contrast_ratio"):
+        check(hasattr(scene.pj, prop_name), f"scene exposes {prop_name}")
+
+    scene.pj.ambient_lux = 50.0
+    scene.pj.iscr_category = "BASIC_DECISION_MAKING"
+    scene.pj.target_contrast_ratio = 15.0
+    check(live_sync.flush_scene_sync(scene), "ambient contrast edit converges live")
+    report_text_contrast = "\n".join(e.text for e in scene.pj.report_lines)
+    check("Effective contrast" in report_text_contrast, "report displays effective contrast")
+    check("Basic Decision Making" in report_text_contrast, "report displays ISCR category target")
+    check("ANSI/AVIXA V201.01:2021" in report_text_contrast, "report carries ISCR disclaimer")
+
     # -- 5. teardown is clean ----------------------------------------------
     print("\n[5] clear analysis and unregister")
     other_scene = bpy.data.scenes.new("Other Projection Scene")

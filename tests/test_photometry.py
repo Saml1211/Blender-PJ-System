@@ -296,3 +296,53 @@ def test_assumptions_mention_derate_chain_and_gamma_ramp():
     assert "derate chain" in text
     assert "gamma-shaped ramps" in text
     assert "gamma=1.20" in text
+
+
+def test_veiling_luminance_calculation():
+    # L_amb = E_amb * gain / pi
+    assert ph.veiling_luminance_nits(50.0, 1.0) == pytest.approx(50.0 / math.pi)
+    assert ph.veiling_luminance_nits(100.0, 1.5) == pytest.approx(150.0 / math.pi)
+
+    with pytest.raises(ProjectionError):
+        ph.veiling_luminance_nits(-10.0, 1.0)
+    with pytest.raises(ProjectionError):
+        ph.veiling_luminance_nits(50.0, -1.0)
+
+
+def test_effective_contrast_ratio_formula():
+    # In dark room (ambient = 0), CR = white / black = native
+    assert ph.effective_contrast_ratio(2000.0, 1.0, 0.0) == pytest.approx(2000.0)
+
+    # In room with 50 lux ambient: (500 + 50) / (0.25 + 50) = 550 / 50.25 ≈ 10.945
+    assert ph.effective_contrast_ratio(500.0, 0.25, 50.0) == pytest.approx(550.0 / 50.25)
+
+    # Completely unlit cell (white = 0) with ambient > 0 -> 1.0 (1:1 washed out)
+    assert ph.effective_contrast_ratio(0.0, 0.0, 50.0) == pytest.approx(1.0)
+
+    with pytest.raises(ProjectionError):
+        ph.effective_contrast_ratio(-1.0, 1.0, 10.0)
+
+
+def test_summarize_contrast_and_iscr_disclaimer():
+    ratios = [15.0, 20.0, 25.0]
+    report = ph.summarize_contrast(
+        ratios,
+        ambient_lux=50.0,
+        screen_gain=1.0,
+        target_category=ph.ISCRCategory.BASIC_DECISION_MAKING,
+        user_target_ratio=15.0,
+    )
+    assert report.min_contrast == 15.0
+    assert report.max_contrast == 25.0
+    assert report.mean_contrast == 20.0
+    assert report.meets_user_target is True
+    assert "ANSI/AVIXA V201.01:2021" in report.disclaimer
+    assert "not certify compliance" in report.disclaimer
+
+    # Failing target check
+    report_fail = ph.summarize_contrast(
+        ratios,
+        ambient_lux=50.0,
+        user_target_ratio=30.0,
+    )
+    assert report_fail.meets_user_target is False

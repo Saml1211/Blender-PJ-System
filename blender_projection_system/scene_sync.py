@@ -19,7 +19,7 @@ from .core.array import format_placement, plan_array
 from .core.coverage import analyze_coverage, format_report
 from .core.errors import ProjectionError
 from .core.footprint import compute_footprint
-from .core.photometry import BlendModel, DerateChain, brightness_warnings
+from .core.photometry import BlendModel, DerateChain, ISCRCategory, brightness_warnings
 from .core.pose import Pose
 from .core.throw import ProjectorSpec, describe_throw, image_size
 from .scene_ids import OBJECT_ROLE_KEY, OWNER_ID, OWNER_KEY
@@ -274,6 +274,9 @@ def _analysis_inputs(scene: bpy.types.Scene):
         occlusion_caster=viz.build_occlusion_caster(scene),
         derate_chain=derate_chain,
         blend_gamma=pj.blend_gamma,
+        ambient_lux=pj.ambient_lux,
+        iscr_category=ISCRCategory[pj.iscr_category],
+        target_contrast_ratio=pj.target_contrast_ratio,
     )
     warnings.extend(report.warnings)
     if report.brightness is not None:

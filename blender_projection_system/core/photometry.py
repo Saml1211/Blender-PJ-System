@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 from .errors import ProjectionError, require_positive
@@ -272,6 +272,126 @@ _LINEAR_RAMP_ASSUMPTION = (
     "blend zones modelled with complementary linear luminance ramps "
     "(real processors often use gamma-shaped curves; check yours)"
 )
+
+
+class ISCRCategory(str, Enum):
+    """Reference application categories per ANSI/AVIXA V201.01:2021 (ISCR).
+
+    Disclaimer: This tool structures metrics according to the standard's
+    vocabulary but does not certify compliance. Numeric tiers are not reproduced.
+    """
+
+    NONE = "none"
+    PASSIVE_VIEWING = "passive_viewing"
+    BASIC_DECISION_MAKING = "basic_decision_making"
+    ANALYTICAL_DECISION_MAKING = "analytical_decision_making"
+    FULL_MOTION_VIDEO = "full_motion_video"
+
+
+ISCR_CATEGORY_LABELS: dict[ISCRCategory, str] = {
+    ISCRCategory.NONE: "None",
+    ISCRCategory.PASSIVE_VIEWING: "Passive Viewing",
+    ISCRCategory.BASIC_DECISION_MAKING: "Basic Decision Making",
+    ISCRCategory.ANALYTICAL_DECISION_MAKING: "Analytical Decision Making",
+    ISCRCategory.FULL_MOTION_VIDEO: "Full Motion Video",
+}
+
+ISCR_DISCLAIMER = (
+    "Structure per ANSI/AVIXA V201.01:2021; this tool does not certify compliance; "
+    "numeric tiers not reproduced."
+)
+
+
+def veiling_luminance_nits(ambient_lux: float, screen_gain: float = 1.0) -> float:
+    """Reflected ambient luminance (veiling luminance) in nits from ambient lux.
+
+    Assumes a Lambertian screen surface of the given gain:
+    ``L_amb = ambient_lux * screen_gain / pi``.
+    """
+    require_positive("screen gain", screen_gain)
+    if not math.isfinite(ambient_lux) or ambient_lux < 0.0:
+        raise ProjectionError("ambient illuminance must be finite and non-negative")
+    return ambient_lux * screen_gain / math.pi
+
+
+def effective_contrast_ratio(
+    white_lux: float,
+    black_lux: float,
+    ambient_lux: float,
+) -> float:
+    """Effective on-screen contrast ratio under ambient illuminance.
+
+    ``CR = (E_white + E_amb) / (E_black + E_amb)``.
+
+    Equivalent in luminance (nits) since the screen gain factor cancels out:
+    ``(L_white + L_amb) / (L_black + L_amb)``.
+    """
+    if white_lux < 0.0 or black_lux < 0.0 or ambient_lux < 0.0:
+        raise ProjectionError("illuminance values must be non-negative")
+    denom = black_lux + ambient_lux
+    if denom <= 0.0:
+        if white_lux <= 0.0:
+            return 1.0
+        return float("inf")
+    return (white_lux + ambient_lux) / denom
+
+
+@dataclass(frozen=True)
+class ContrastReport:
+    """On-screen effective contrast analysis across sampled wall cells."""
+
+    ambient_lux: float
+    screen_gain: float
+    veiling_nits: float
+    min_contrast: float
+    max_contrast: float
+    mean_contrast: float
+    target_category: ISCRCategory = ISCRCategory.NONE
+    user_target_ratio: float = 0.0
+    meets_user_target: bool | None = None
+    assumptions: list[str] = field(default_factory=list)
+    disclaimer: str = ISCR_DISCLAIMER
+
+
+def summarize_contrast(
+    contrast_values: Iterable[float],
+    ambient_lux: float,
+    screen_gain: float = 1.0,
+    target_category: ISCRCategory = ISCRCategory.NONE,
+    user_target_ratio: float = 0.0,
+    assumptions: Sequence[str] | None = None,
+) -> ContrastReport:
+    values = [v for v in contrast_values if math.isfinite(v)]
+    if not values:
+        raise ProjectionError("no contrast samples to summarise")
+    lo, hi = min(values), max(values)
+    mean = sum(values) / len(values)
+    veiling = veiling_luminance_nits(ambient_lux, screen_gain)
+
+    meets_target = None
+    if user_target_ratio > 0.0:
+        meets_target = lo >= user_target_ratio
+
+    if assumptions is None:
+        assumptions = [
+            "uniform ambient illuminance across screen (real directional ambient light not modelled)",
+            "native projector contrast used (not dynamic contrast); no inter-reflection modelled",
+            "Lambertian screen reflectance at the stated screen gain",
+        ]
+
+    return ContrastReport(
+        ambient_lux=ambient_lux,
+        screen_gain=screen_gain,
+        veiling_nits=veiling,
+        min_contrast=lo,
+        max_contrast=hi,
+        mean_contrast=mean,
+        target_category=target_category,
+        user_target_ratio=user_target_ratio,
+        meets_user_target=meets_target,
+        assumptions=list(assumptions),
+        disclaimer=ISCR_DISCLAIMER,
+    )
 
 
 class BlendModel(str, Enum):

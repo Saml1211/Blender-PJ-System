@@ -711,6 +711,48 @@ class PJ_PG_Scene(PropertyGroup):
         precision=2,
         update=_update_analysis,
     )
+    ambient_lux: FloatProperty(
+        name="Ambient Illuminance",
+        description="Ambient illuminance at the screen surface (lux) from room lighting/survey. 0 = dark room",
+        default=0.0,
+        min=0.0,
+        max=5000.0,
+        precision=1,
+        update=_update_analysis,
+    )
+    iscr_category: EnumProperty(
+        name="AVIXA ISCR Target",
+        description=(
+            "Reference application category per ANSI/AVIXA V201.01:2021 (ISCR). "
+            "Disclaimer: this tool does not certify compliance; numeric tiers not reproduced"
+        ),
+        items=[
+            ("NONE", "None", "No category reference target selected"),
+            ("PASSIVE_VIEWING", "Passive Viewing", "Information viewing / casual displays"),
+            ("BASIC_DECISION_MAKING", "Basic Decision Making", "Presentations, classrooms, business documents"),
+            (
+                "ANALYTICAL_DECISION_MAKING",
+                "Analytical Decision Making",
+                "Fine detail, engineering drawings, spreadsheets",
+            ),
+            (
+                "FULL_MOTION_VIDEO",
+                "Full Motion Video",
+                "Video content requiring shadow and gradient detail",
+            ),
+        ],
+        default="NONE",
+        update=_update_analysis,
+    )
+    target_contrast_ratio: FloatProperty(
+        name="Target Contrast Ratio",
+        description="Optional target effective contrast ratio (e.g. 15.0 for 15:1). 0 = no numeric target check",
+        default=0.0,
+        min=0.0,
+        max=10000.0,
+        precision=1,
+        update=_update_analysis,
+    )
     draw_frustums: BoolProperty(
         name="Draw Frustums",
         description="Include lens-to-corner edges in the analysis visualisation",

@@ -276,6 +276,16 @@ class PJ_PT_analysis(_Base):
             d_col.prop(pj, "derate_picture_mode", text="Picture Mode")
             d_col.prop(pj, "derate_aging", text="Aging Factor")
 
+        contrast_box = box.box()
+        contrast_box.label(text="Ambient Light & Contrast", icon="LIGHT")
+        c_col = contrast_box.column(align=True)
+        c_col.prop(pj, "ambient_lux", text="Ambient (lux)")
+        c_col.prop(pj, "iscr_category", text="ISCR Category")
+        if pj.iscr_category != "NONE":
+            c_col.prop(pj, "target_contrast_ratio", text="Target Ratio (:1)")
+            c_col.label(text="Structure per ANSI/AVIXA V201.01:2021;", icon="INFO")
+            c_col.label(text="this tool does not certify compliance.")
+
         box = layout.box()
         box.label(text="Obstacles / Occlusion", icon="SNAP_VOLUME")
         col = box.column(align=True)

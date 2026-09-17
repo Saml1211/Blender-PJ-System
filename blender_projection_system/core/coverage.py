@@ -20,15 +20,20 @@ from .errors import ProjectionError
 from .footprint import Footprint
 from .occlusion import RAY_TOLERANCE, OcclusionCaster
 from .photometry import (
+    ISCR_CATEGORY_LABELS,
     BlendModel,
     BrightnessReport,
+    ContrastReport,
     DerateChain,
+    ISCRCategory,
     assumptions_for_blend_model,
     blend_ramp_luminance_error,
+    effective_contrast_ratio,
     illuminance_at,
     linear_ramp_weight,
     overlap_guidance,
     summarize_brightness,
+    summarize_contrast,
 )
 from .surfaces import Surface
 from .vectors import Vec3, distance, dot, normalize, sub
@@ -135,6 +140,7 @@ class CoverageReport:
     blend_zones: list[BlendZone] = field(default_factory=list)
     projector_spans: list[tuple[str, Interval]] = field(default_factory=list)
     brightness: BrightnessReport | None = None
+    contrast: ContrastReport | None = None
     blend_model: BlendModel = BlendModel.RAW
     blend_gamma: float = 1.0
     derate_chain: DerateChain | None = None
@@ -208,6 +214,9 @@ def analyze_coverage(
     occlusion_caster: OcclusionCaster | None = None,
     derate_chain: DerateChain | None = None,
     blend_gamma: float = 1.0,
+    ambient_lux: float = 0.0,
+    iscr_category: ISCRCategory = ISCRCategory.NONE,
+    target_contrast_ratio: float = 0.0,
 ) -> CoverageReport:
     """Rasterised coverage, gap, overlap and brightness analysis for a wall.
 
@@ -247,6 +256,7 @@ def analyze_coverage(
         return report
 
     lux_grid: list[float] = []
+    contrast_grid: list[float] = []
     uncovered_by_row: list[list[bool]] = [[False] * grid_s for _ in range(grid_z)]
     covered_z: list[float] = []
     occlusion_by: dict[str, ProjectorOcclusion] = (
@@ -294,6 +304,14 @@ def analyze_coverage(
             report.covered_cells += 1
             lux_grid.append(lux)
             covered_z.append(z)
+            black_contributions = [
+                (fp, lux_val / max(1.0, fp.spec.native_contrast))
+                for fp, lux_val in contributions
+            ]
+            black_lux = _combined_illuminance(
+                black_contributions, s, wall, blend_model, blend_gamma
+            )
+            contrast_grid.append(effective_contrast_ratio(lux, black_lux, ambient_lux))
         else:
             uncovered_by_row[iz][i_s] = True
         if count >= 2:
@@ -314,6 +332,16 @@ def analyze_coverage(
             screen_gain,
             assumptions_for_blend_model(blend_model, blend_gamma, derate_chain),
             derate_chain=derate_chain,
+        )
+    if contrast_grid and (
+        ambient_lux > 0.0 or iscr_category is not ISCRCategory.NONE or target_contrast_ratio > 0.0
+    ):
+        report.contrast = summarize_contrast(
+            contrast_grid,
+            ambient_lux,
+            screen_gain,
+            target_category=iscr_category,
+            user_target_ratio=target_contrast_ratio,
         )
     report.blend_model = blend_model
     report.blend_gamma = blend_gamma
@@ -584,6 +612,18 @@ def _coverage_warnings(report: CoverageReport) -> list[str]:
             f"image cells ({occ.occluded_fraction * 100:.1f}%) are occluded by an "
             "obstacle - those cells get no light from it"
         )
+    if report.contrast is not None:
+        c = report.contrast
+        if c.user_target_ratio > 0.0 and c.meets_user_target is False:
+            out.append(
+                f"worst-case effective contrast {c.min_contrast:.1f}:1 fails user target "
+                f"{c.user_target_ratio:.1f}:1 under {c.ambient_lux:.0f} lux ambient illuminance"
+            )
+        elif c.min_contrast < 5.0 and c.ambient_lux > 0.0:
+            out.append(
+                f"worst-case effective contrast {c.min_contrast:.1f}:1 is very low; "
+                f"image will appear washed out under {c.ambient_lux:.0f} lux ambient light"
+            )
     return out
 
 
@@ -641,4 +681,23 @@ def format_report(report: CoverageReport) -> list[str]:
             f"Overlap luminance uses a gamma-ramp blend model (gamma={report.blend_gamma:.2f}, "
             f"theoretical mid-zone error {err * 100:+.1f}%); see brightness assumptions"
         )
+    if report.contrast:
+        c = report.contrast
+        cat_suffix = (
+            f" [target: {ISCR_CATEGORY_LABELS.get(c.target_category, '')}]"
+            if c.target_category is not ISCRCategory.NONE
+            else ""
+        )
+        lines.append(
+            f"Effective contrast{cat_suffix}: mean {c.mean_contrast:.1f}:1, "
+            f"min/worst {c.min_contrast:.1f}:1 (ambient {c.ambient_lux:.1f} lux, "
+            f"veiling {c.veiling_nits:.1f} nits)"
+        )
+        if c.user_target_ratio > 0.0:
+            verdict = "PASS" if c.meets_user_target else "FAIL"
+            lines.append(
+                f"  Target ratio {c.user_target_ratio:.1f}:1: {verdict} "
+                f"(worst-case {c.min_contrast:.1f}:1)"
+            )
+        lines.append(f"  Disclaimer: {c.disclaimer}")
     return lines

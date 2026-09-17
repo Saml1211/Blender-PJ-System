@@ -266,6 +266,7 @@ class PJ_PT_analysis(_Base):
         col.prop(pj, "blend_model", text="Overlap")
         if pj.blend_model == "GAMMA_RAMP":
             col.prop(pj, "blend_gamma", text="Blend Gamma")
+        col.prop(pj, "enable_nine_point")
         col.prop(pj, "draw_frustums")
 
         derate_box = box.box()

@@ -277,6 +277,7 @@ def _analysis_inputs(scene: bpy.types.Scene):
         ambient_lux=pj.ambient_lux,
         iscr_category=ISCRCategory[pj.iscr_category],
         target_contrast_ratio=pj.target_contrast_ratio,
+        enable_nine_point=pj.enable_nine_point,
     )
     warnings.extend(report.warnings)
     if report.brightness is not None:

@@ -906,6 +906,19 @@ def main() -> None:
     check("Basic Decision Making" in report_text_contrast, "report displays ISCR category target")
     check("ANSI/AVIXA V201.01:2021" in report_text_contrast, "report carries ISCR disclaimer")
 
+    # -- 4f. ANSI/IEC 9-point vocabulary output (increment #3c) -----------
+    print("\n[4f] ANSI/IEC 9-point vocabulary output")
+    check(hasattr(scene.pj, "enable_nine_point"), "scene exposes enable_nine_point")
+    scene.pj.enable_nine_point = True
+    check(live_sync.flush_scene_sync(scene), "nine-point sync converges live")
+    report_text_nine = "\n".join(e.text for e in scene.pj.report_lines)
+    check("ANSI/IEC 9-point output:" in report_text_nine, "report displays 9-point output")
+    check("corner-to-center" in report_text_nine, "report displays corner-to-center uniformity")
+    check(
+        "Model output in ANSI/IEC vocabulary" in report_text_nine,
+        "report carries ANSI/IEC disclaimer",
+    )
+
     # -- 5. teardown is clean ----------------------------------------------
     print("\n[5] clear analysis and unregister")
     other_scene = bpy.data.scenes.new("Other Projection Scene")

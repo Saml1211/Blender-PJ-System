@@ -394,6 +394,58 @@ def summarize_contrast(
     )
 
 
+ANSI_IEC_DISCLAIMER = (
+    "Model output in ANSI/IEC vocabulary; calculated from geometric simulation, "
+    "not physical laboratory measurement."
+)
+
+
+@dataclass(frozen=True)
+class NinePointSample:
+    """One of the nine ANSI/IEC 61947-1 measurement sample points."""
+
+    position_label: str
+    normalized_u: float
+    normalized_v: float
+    s: float
+    z: float
+    lux: float
+    nits: float
+    foot_lamberts: float
+
+
+@dataclass(frozen=True)
+class NinePointReport:
+    """Light output and uniformity evaluated in ANSI/IEC 9-point vocabulary.
+
+    References:
+        - IEC 61947-1:2002 / ANSI IT7.228: 3x3 equal zone centers for measuring
+          projector light output and center-to-corner uniformity.
+
+    Disclaimer:
+        Model output in ANSI/IEC vocabulary; calculated from geometric simulation,
+        not physical laboratory measurement.
+    """
+
+    points: tuple[NinePointSample, ...]
+    average_lux: float
+    average_nits: float
+    average_foot_lamberts: float
+    center_lux: float
+    center_nits: float
+    center_foot_lamberts: float
+    lit_area: float
+    light_output_lumens: float
+    """9-point average illuminance * lit area."""
+    corner_to_center_ratio: float
+    """Min corner illuminance / center illuminance (datasheet metric)."""
+    corner_average_to_center_ratio: float
+    """Average of 4 corners / center illuminance."""
+    nine_point_uniformity: float
+    """Min / max among the 9 sample points."""
+    disclaimer: str = ANSI_IEC_DISCLAIMER
+
+
 class BlendModel(str, Enum):
     """How overlapping projectors' illuminance is combined.
 

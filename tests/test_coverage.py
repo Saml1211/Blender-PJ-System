@@ -393,3 +393,53 @@ def test_effective_contrast_warnings(wall):
     assert report.contrast is not None
     assert report.contrast.meets_user_target is False
     assert any("fails user target" in w for w in report.warnings)
+
+
+def test_nine_point_report_generation(wall):
+    spec = ProjectorSpec(throw_ratio=1.5, lumens=6000.0)
+    a = _projector_at(wall, wall.arc_length * 0.4, 4.5, spec, "Left")
+    b = _projector_at(wall, wall.arc_length * 0.6, 4.5, spec, "Right")
+    report = analyze_coverage(
+        [a, b],
+        wall,
+        grid_s=60,
+        grid_z=16,
+        enable_nine_point=True,
+    )
+    assert report.nine_point is not None
+    np = report.nine_point
+    assert len(np.points) == 9
+    labels = [p.position_label for p in np.points]
+    assert labels == [
+        "Top-Left",
+        "Top-Center",
+        "Top-Right",
+        "Mid-Left",
+        "Center",
+        "Mid-Right",
+        "Bottom-Left",
+        "Bottom-Center",
+        "Bottom-Right",
+    ]
+    assert np.average_lux > 0.0
+    assert np.average_nits > 0.0
+    assert np.average_foot_lamberts > 0.0
+    assert np.light_output_lumens > 0.0
+    assert 0.0 < np.corner_to_center_ratio <= 1.0
+    assert "ANSI/IEC vocabulary" in np.disclaimer
+    assert "not physical laboratory measurement" in np.disclaimer
+
+    lines = format_report(report)
+    text = "\n".join(lines)
+    assert "ANSI/IEC 9-point output:" in text
+    assert "corner-to-center" in text
+    assert "Model output in ANSI/IEC vocabulary" in text
+
+
+def test_nine_point_can_be_disabled(wall):
+    spec = ProjectorSpec(throw_ratio=1.5, lumens=6000.0)
+    a = _projector_at(wall, wall.arc_length * 0.5, 4.5, spec, "Proj")
+    report = analyze_coverage([a], wall, grid_s=40, grid_z=10, enable_nine_point=False)
+    assert report.nine_point is None
+    lines = format_report(report)
+    assert not any("ANSI/IEC 9-point" in line for line in lines)

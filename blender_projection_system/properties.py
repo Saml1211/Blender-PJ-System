@@ -753,6 +753,12 @@ class PJ_PG_Scene(PropertyGroup):
         precision=1,
         update=_update_analysis,
     )
+    enable_nine_point: BoolProperty(
+        name="ANSI/IEC 9-Point",
+        description="Sample light output and uniformity in ANSI/IEC 9-zone vocabulary",
+        default=True,
+        update=_update_analysis,
+    )
     draw_frustums: BoolProperty(
         name="Draw Frustums",
         description="Include lens-to-corner edges in the analysis visualisation",

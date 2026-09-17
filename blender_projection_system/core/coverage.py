@@ -26,11 +26,15 @@ from .photometry import (
     ContrastReport,
     DerateChain,
     ISCRCategory,
+    NinePointReport,
+    NinePointSample,
     assumptions_for_blend_model,
     blend_ramp_luminance_error,
     effective_contrast_ratio,
     illuminance_at,
     linear_ramp_weight,
+    luminance_nits,
+    nits_to_foot_lamberts,
     overlap_guidance,
     summarize_brightness,
     summarize_contrast,
@@ -141,6 +145,7 @@ class CoverageReport:
     projector_spans: list[tuple[str, Interval]] = field(default_factory=list)
     brightness: BrightnessReport | None = None
     contrast: ContrastReport | None = None
+    nine_point: NinePointReport | None = None
     blend_model: BlendModel = BlendModel.RAW
     blend_gamma: float = 1.0
     derate_chain: DerateChain | None = None
@@ -217,6 +222,7 @@ def analyze_coverage(
     ambient_lux: float = 0.0,
     iscr_category: ISCRCategory = ISCRCategory.NONE,
     target_contrast_ratio: float = 0.0,
+    enable_nine_point: bool = True,
 ) -> CoverageReport:
     """Rasterised coverage, gap, overlap and brightness analysis for a wall.
 
@@ -347,8 +353,139 @@ def analyze_coverage(
     report.blend_gamma = blend_gamma
     report.derate_chain = derate_chain
 
+    if enable_nine_point and usable and report.covered_cells > 0:
+        s_min = min(fp.s_min for fp in usable)
+        s_max = max(fp.s_max for fp in usable)
+        if s_max > s_min and report.covered_z_max > report.covered_z_min:
+            try:
+                report.nine_point = compute_nine_point_report(
+                    usable,
+                    wall,
+                    s_min=s_min,
+                    s_max=s_max,
+                    z_min=report.covered_z_min,
+                    z_max=report.covered_z_max,
+                    screen_gain=screen_gain,
+                    blend_model=blend_model,
+                    blend_gamma=blend_gamma,
+                    occlusion_caster=occlusion_caster,
+                )
+            except ProjectionError:
+                pass
+
     report.warnings.extend(_coverage_warnings(report))
     return report
+
+
+def compute_nine_point_report(
+    footprints: Sequence[Footprint],
+    wall: Surface,
+    s_min: float,
+    s_max: float,
+    z_min: float,
+    z_max: float,
+    screen_gain: float = 1.0,
+    blend_model: BlendModel = BlendModel.RAW,
+    blend_gamma: float = 1.0,
+    occlusion_caster: OcclusionCaster | None = None,
+) -> NinePointReport:
+    """Sample the active projected image area at ANSI/IEC 9-zone positions.
+
+    Evaluates illuminance and luminance at the center of each of the 9 equal
+    rectangles in a 3x3 grid across the active display canvas on the wall.
+    Reports light output (9-point average * area) and center-to-corner uniformity
+    in datasheet terms (nits and foot-lamberts).
+    """
+    width = s_max - s_min
+    height = z_max - z_min
+    if width <= 0.0 or height <= 0.0:
+        raise ProjectionError("lit area must have positive dimensions for 9-point analysis")
+    area = width * height
+
+    # 3x3 zone centers in normalized coordinates (u, v):
+    # u in [1/6, 1/2, 5/6], v in [5/6, 1/2, 1/6] (top to bottom, left to right)
+    coords = [
+        ("Top-Left", 1.0 / 6.0, 5.0 / 6.0),
+        ("Top-Center", 0.5, 5.0 / 6.0),
+        ("Top-Right", 5.0 / 6.0, 5.0 / 6.0),
+        ("Mid-Left", 1.0 / 6.0, 0.5),
+        ("Center", 0.5, 0.5),
+        ("Mid-Right", 5.0 / 6.0, 0.5),
+        ("Bottom-Left", 1.0 / 6.0, 1.0 / 6.0),
+        ("Bottom-Center", 0.5, 1.0 / 6.0),
+        ("Bottom-Right", 5.0 / 6.0, 1.0 / 6.0),
+    ]
+
+    samples: list[NinePointSample] = []
+    for label, u, v in coords:
+        s = s_min + u * width
+        z = z_min + v * height
+        point = wall.point_at(s, z)
+        normal = wall.normal_at_s(s)
+        contributions: list[tuple[Footprint, float]] = []
+        for fp in footprints:
+            if not fp.covers(point):
+                continue
+            if occlusion_caster is not None:
+                direction = normalize(sub(point, fp.pose.origin))
+                reach = max(0.0, distance(fp.pose.origin, point) - RAY_TOLERANCE)
+                if occlusion_caster(fp.pose.origin, direction, reach):
+                    continue
+            contributions.append((fp, _cell_illuminance(fp, point, normal)))
+        if contributions:
+            lux = _combined_illuminance(contributions, s, wall, blend_model, blend_gamma)
+        else:
+            lux = 0.0
+        nits = luminance_nits(lux, screen_gain)
+        fl = nits_to_foot_lamberts(nits)
+        samples.append(
+            NinePointSample(
+                position_label=label,
+                normalized_u=u,
+                normalized_v=v,
+                s=s,
+                z=z,
+                lux=lux,
+                nits=nits,
+                foot_lamberts=fl,
+            )
+        )
+
+    avg_lux = sum(s.lux for s in samples) / 9.0
+    avg_nits = luminance_nits(avg_lux, screen_gain)
+    avg_fl = nits_to_foot_lamberts(avg_nits)
+
+    center = samples[4]  # "Center" is index 4
+    center_lux = center.lux
+    center_nits = center.nits
+    center_fl = center.foot_lamberts
+
+    # Corners are indices 0 (TL), 2 (TR), 6 (BL), 8 (BR)
+    corner_luxes = [samples[0].lux, samples[2].lux, samples[6].lux, samples[8].lux]
+    min_corner = min(corner_luxes)
+    avg_corner = sum(corner_luxes) / 4.0
+
+    corner_to_center = (min_corner / center_lux) if center_lux > 0.0 else 0.0
+    corner_avg_to_center = (avg_corner / center_lux) if center_lux > 0.0 else 0.0
+
+    all_lux = [s.lux for s in samples]
+    lo_lux, hi_lux = min(all_lux), max(all_lux)
+    nine_uniformity = (lo_lux / hi_lux) if hi_lux > 0.0 else 0.0
+
+    return NinePointReport(
+        points=tuple(samples),
+        average_lux=avg_lux,
+        average_nits=avg_nits,
+        average_foot_lamberts=avg_fl,
+        center_lux=center_lux,
+        center_nits=center_nits,
+        center_foot_lamberts=center_fl,
+        lit_area=area,
+        light_output_lumens=avg_lux * area,
+        corner_to_center_ratio=corner_to_center,
+        corner_average_to_center_ratio=corner_avg_to_center,
+        nine_point_uniformity=nine_uniformity,
+    )
 
 
 def _cell_illuminance(fp: Footprint, point: Vec3, normal: Vec3) -> float:
@@ -700,4 +837,17 @@ def format_report(report: CoverageReport) -> list[str]:
                 f"(worst-case {c.min_contrast:.1f}:1)"
             )
         lines.append(f"  Disclaimer: {c.disclaimer}")
+    if report.nine_point:
+        np = report.nine_point
+        lines.append(
+            f"ANSI/IEC 9-point output: {np.light_output_lumens:.0f} lm "
+            f"(avg {np.average_nits:.0f} nits / {np.average_foot_lamberts:.1f} fL, "
+            f"center {np.center_nits:.0f} nits / {np.center_foot_lamberts:.1f} fL)"
+        )
+        lines.append(
+            f"  Uniformity: corner-to-center {np.corner_to_center_ratio * 100:.1f}%, "
+            f"4-corner avg/center {np.corner_average_to_center_ratio * 100:.1f}%, "
+            f"9-point min/max {np.nine_point_uniformity:.2f}"
+        )
+        lines.append(f"  Disclaimer: {np.disclaimer}")
     return lines

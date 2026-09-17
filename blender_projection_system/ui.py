@@ -287,6 +287,16 @@ class PJ_PT_analysis(_Base):
             c_col.label(text="Structure per ANSI/AVIXA V201.01:2021;", icon="INFO")
             c_col.label(text="this tool does not certify compliance.")
 
+        discas_box = box.box()
+        discas_box.prop(pj, "enable_discas", text="DISCAS Viewer Audit (V202.01)")
+        if pj.enable_discas:
+            d_col = discas_box.column(align=True)
+            d_col.prop(pj, "farthest_viewer_distance", text="Farthest Viewer (m)")
+            row = d_col.row(align=True)
+            row.prop(pj, "discas_element_height_pct", text="BDM %EH")
+            row.prop(pj, "discas_vertical_resolution", text="ADM V-Res")
+            discas_box.label(text="Structure per ANSI/INFOCOMM V202.01", icon="INFO")
+
         box = layout.box()
         box.label(text="Obstacles / Occlusion", icon="SNAP_VOLUME")
         col = box.column(align=True)

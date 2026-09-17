@@ -759,6 +759,38 @@ class PJ_PG_Scene(PropertyGroup):
         default=True,
         update=_update_analysis,
     )
+    enable_discas: BoolProperty(
+        name="DISCAS Viewer Audit",
+        description="Run ANSI/INFOCOMM V202.01 (DISCAS) farthest and closest viewer checks",
+        default=False,
+        update=_update_analysis,
+    )
+    discas_element_height_pct: FloatProperty(
+        name="% Element Height",
+        description="Percentage element height for BDM legibility (standard text default: 3.0%)",
+        default=3.0,
+        min=0.5,
+        max=10.0,
+        precision=1,
+        update=_update_analysis,
+    )
+    discas_vertical_resolution: IntProperty(
+        name="Vertical Resolution",
+        description="Display vertical pixel resolution for ADM acuity limit",
+        default=1080,
+        min=480,
+        max=8640,
+        update=_update_analysis,
+    )
+    farthest_viewer_distance: FloatProperty(
+        name="Farthest Viewer Distance",
+        description="Distance (m) to farthest viewer for quick DISCAS audit (0 = scene objects only)",
+        default=0.0,
+        min=0.0,
+        max=200.0,
+        precision=2,
+        update=_update_analysis,
+    )
     draw_frustums: BoolProperty(
         name="Draw Frustums",
         description="Include lens-to-corner edges in the analysis visualisation",

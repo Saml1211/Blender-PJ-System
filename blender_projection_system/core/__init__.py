@@ -31,6 +31,15 @@ from .coverage import (
     compute_blend_zones,
     format_report,
 )
+from .discas import (
+    DISCAS_DISCLAIMER,
+    DiscasReport,
+    ViewerResult,
+    adm_max_viewing_distance,
+    audit_viewers,
+    bdm_max_viewing_distance,
+    closest_viewer_min_distance,
+)
 from .errors import ProjectionError
 from .footprint import Footprint, FootprintSample, compute_footprint
 from .photometry import (
@@ -74,6 +83,8 @@ __all__ = [
     "BrightnessReport",
     "CoverageReport",
     "CylindricalWall",
+    "DISCAS_DISCLAIMER",
+    "DiscasReport",
     "Footprint",
     "FootprintSample",
     "ImageSize",
@@ -88,10 +99,15 @@ __all__ = [
     "RiggingItem",
     "SurfaceHit",
     "ThrowReport",
+    "ViewerResult",
+    "adm_max_viewing_distance",
     "analyze_coverage",
     "arc_centers",
     "arc_width_per_projector",
+    "audit_viewers",
     "axial_intensity",
+    "bdm_max_viewing_distance",
+    "closest_viewer_min_distance",
     "compute_blend_zones",
     "compute_footprint",
     "describe_throw",

@@ -179,6 +179,36 @@ def report_to_dict(
             ],
         }
 
+    if report.discas:
+        d = report.discas
+        data["discas"] = {
+            "image_height_m": round(d.image_height, 4),
+            "vertical_resolution": d.vertical_resolution,
+            "element_height_pct": round(d.element_height_pct, 2),
+            "bdm_max_distance_m": round(d.bdm_max_distance, 3),
+            "adm_max_distance_m": round(d.adm_max_distance, 3),
+            "min_distance_m": round(d.min_distance, 3),
+            "farthest_distance_m": round(d.farthest_distance, 3),
+            "worst_off_axis_deg": round(d.worst_off_axis_deg, 2),
+            "bdm_conforms": d.bdm_conforms,
+            "adm_conforms": d.adm_conforms,
+            "disclaimer": d.disclaimer,
+            "viewers": [
+                {
+                    "name": v.name,
+                    "location": [round(x, 4) for x in v.location],
+                    "distance_m": round(v.distance, 3),
+                    "off_axis_deg": round(v.off_axis_deg, 2),
+                    "perceived_nits": round(v.perceived_nits, 1),
+                    "bdm_pass": v.bdm_pass,
+                    "adm_pass": v.adm_pass,
+                    "closest_pass": v.closest_pass,
+                    "off_axis_pass": v.off_axis_pass,
+                }
+                for v in d.viewers
+            ],
+        }
+
     if rigging_items:
         data["rigging_schedule"] = [asdict(item) for item in rigging_items]
 
@@ -313,6 +343,14 @@ def export_coverage_summary_to_csv(
         writer.writerow(
             ["ANSI_9Point", "Corner-to-Center", f"{np.corner_to_center_ratio * 100:.1f}", "%"]
         )
+
+    if report.discas:
+        d = report.discas
+        writer.writerow(["DISCAS", "Image Height", f"{d.image_height:.3f}", "m"])
+        writer.writerow(["DISCAS", "BDM Max Distance", f"{d.bdm_max_distance:.2f}", "m"])
+        writer.writerow(["DISCAS", "ADM Max Distance", f"{d.adm_max_distance:.2f}", "m"])
+        writer.writerow(["DISCAS", "BDM Conformance", "PASS" if d.bdm_conforms else "FAIL", ""])
+        writer.writerow(["DISCAS", "ADM Conformance", "PASS" if d.adm_conforms else "FAIL", ""])
 
     if rigging_items:
         writer.writerow([])

@@ -262,6 +262,29 @@ def _analysis_inputs(scene: bpy.types.Scene):
         else None
     )
 
+    viewers: list[tuple[str, tuple[float, float, float]]] = []
+    if pj.enable_discas:
+        if pj.farthest_viewer_distance > 0.0:
+            s_mid = 0.5 * wall.arc_length
+            mid_z = 0.5 * wall.height
+            cp = wall.point_at(s_mid, mid_z)
+            n = wall.normal_at_s(s_mid)
+            viewers.append(
+                (
+                    "Farthest",
+                    (
+                        cp[0] + n[0] * pj.farthest_viewer_distance,
+                        cp[1] + n[1] * pj.farthest_viewer_distance,
+                        cp[2] + n[2] * pj.farthest_viewer_distance,
+                    ),
+                )
+            )
+        for obj in scene.objects:
+            lname = obj.name.lower()
+            if lname.startswith("viewer") or lname.startswith("seat"):
+                t = obj.matrix_world.translation
+                viewers.append((obj.name, (float(t.x), float(t.y), float(t.z))))
+
     report = analyze_coverage(
         [footprint for _obj, _spec, footprint in footprints],
         wall,
@@ -278,6 +301,9 @@ def _analysis_inputs(scene: bpy.types.Scene):
         iscr_category=ISCRCategory[pj.iscr_category],
         target_contrast_ratio=pj.target_contrast_ratio,
         enable_nine_point=pj.enable_nine_point,
+        viewers=viewers,
+        discas_element_height_pct=pj.discas_element_height_pct,
+        discas_vertical_resolution=pj.discas_vertical_resolution,
     )
     warnings.extend(report.warnings)
     if report.brightness is not None:

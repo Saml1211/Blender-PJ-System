@@ -16,6 +16,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
+from .discas import DiscasReport, audit_viewers
 from .errors import ProjectionError
 from .footprint import Footprint
 from .occlusion import RAY_TOLERANCE, OcclusionCaster
@@ -146,6 +147,7 @@ class CoverageReport:
     brightness: BrightnessReport | None = None
     contrast: ContrastReport | None = None
     nine_point: NinePointReport | None = None
+    discas: DiscasReport | None = None
     blend_model: BlendModel = BlendModel.RAW
     blend_gamma: float = 1.0
     derate_chain: DerateChain | None = None
@@ -223,6 +225,9 @@ def analyze_coverage(
     iscr_category: ISCRCategory = ISCRCategory.NONE,
     target_contrast_ratio: float = 0.0,
     enable_nine_point: bool = True,
+    viewers: Sequence[tuple[str, Vec3]] = (),
+    discas_element_height_pct: float = 3.0,
+    discas_vertical_resolution: int = 1080,
 ) -> CoverageReport:
     """Rasterised coverage, gap, overlap and brightness analysis for a wall.
 
@@ -372,6 +377,25 @@ def analyze_coverage(
                 )
             except ProjectionError:
                 pass
+
+    if viewers and usable and report.covered_cells > 0:
+        s_min = min(fp.s_min for fp in usable)
+        s_max = max(fp.s_max for fp in usable)
+        mid_s = 0.5 * (s_min + s_max)
+        mid_z = 0.5 * (report.covered_z_min + report.covered_z_max)
+        screen_center = wall.point_at(mid_s, mid_z)
+        screen_normal = wall.normal_at_s(mid_s)
+        mean_nits = report.brightness.mean_nits if report.brightness else 150.0
+        h = max(0.1, report.covered_height)
+        report.discas = audit_viewers(
+            viewers=viewers,
+            screen_center=screen_center,
+            screen_normal=screen_normal,
+            image_height=h,
+            mean_screen_nits=mean_nits,
+            vertical_resolution=discas_vertical_resolution,
+            element_height_pct=discas_element_height_pct,
+        )
 
     report.warnings.extend(_coverage_warnings(report))
     return report
@@ -761,6 +785,11 @@ def _coverage_warnings(report: CoverageReport) -> list[str]:
                 f"worst-case effective contrast {c.min_contrast:.1f}:1 is very low; "
                 f"image will appear washed out under {c.ambient_lux:.0f} lux ambient light"
             )
+    if report.discas is not None and not report.discas.bdm_conforms:
+        out.append(
+            f"DISCAS BDM failure: farthest viewer ({report.discas.farthest_distance:.1f} m) "
+            f"exceeds maximum legibility distance ({report.discas.bdm_max_distance:.1f} m)"
+        )
     return out
 
 
@@ -850,4 +879,26 @@ def format_report(report: CoverageReport) -> list[str]:
             f"9-point min/max {np.nine_point_uniformity:.2f}"
         )
         lines.append(f"  Disclaimer: {np.disclaimer}")
+    if report.discas:
+        d = report.discas
+        bdm_verdict = "PASS" if d.bdm_conforms else "FAIL"
+        adm_verdict = "PASS" if d.adm_conforms else "FAIL"
+        lines.append(
+            f"DISCAS Viewer Audit (image height {d.image_height:.2f} m): "
+            f"BDM {d.element_height_pct:.1f}% max {d.bdm_max_distance:.1f} m [{bdm_verdict}], "
+            f"ADM {d.vertical_resolution}p max {d.adm_max_distance:.1f} m [{adm_verdict}], "
+            f"min {d.min_distance:.1f} m"
+        )
+        if d.viewers:
+            lines.append(
+                f"  Audited {len(d.viewers)} viewer(s): farthest {d.farthest_distance:.1f} m, "
+                f"worst off-axis {d.worst_off_axis_deg:.1f} deg"
+            )
+            for v in d.viewers:
+                lines.append(
+                    f"    viewer '{v.name}': dist {v.distance:.2f} m, angle {v.off_axis_deg:.1f} deg, "
+                    f"perceived {v.perceived_nits:.0f} nits (BDM {'OK' if v.bdm_pass else 'FAIL'}, "
+                    f"ADM {'OK' if v.adm_pass else 'FAIL'})"
+                )
+        lines.append(f"  Disclaimer: {d.disclaimer}")
     return lines

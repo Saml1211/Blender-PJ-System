@@ -943,6 +943,25 @@ def main() -> None:
         check("Wall,Name" in csv_content, "exported CSV has summary metrics")
         check("--- RIGGING SCHEDULE ---" in csv_content, "exported CSV has rigging table")
 
+    # -- 4h. DISCAS viewer audit (increment #5) ---------------------------
+    print("\n[4h] DISCAS viewer audit")
+    for prop_name in (
+        "enable_discas",
+        "discas_element_height_pct",
+        "discas_vertical_resolution",
+        "farthest_viewer_distance",
+    ):
+        check(hasattr(scene.pj, prop_name), f"scene exposes {prop_name}")
+
+    scene.pj.enable_discas = True
+    scene.pj.farthest_viewer_distance = 12.0
+    scene.pj.discas_element_height_pct = 3.0
+    check(live_sync.flush_scene_sync(scene), "DISCAS sync converges live")
+    report_text_discas = "\n".join(e.text for e in scene.pj.report_lines)
+    check("DISCAS Viewer Audit" in report_text_discas, "report displays DISCAS section")
+    check("ANSI/INFOCOMM V202.01" in report_text_discas, "report carries DISCAS disclaimer")
+    check("Farthest" in report_text_discas, "report lists evaluated farthest viewer")
+
     # -- 5. teardown is clean ----------------------------------------------
     print("\n[5] clear analysis and unregister")
     other_scene = bpy.data.scenes.new("Other Projection Scene")

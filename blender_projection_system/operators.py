@@ -18,6 +18,7 @@ import bpy
 from bpy.props import BoolProperty, EnumProperty, FloatProperty, IntProperty, StringProperty
 from bpy.types import Operator
 
+from . import bl_info
 from . import visualization as viz
 from .core.array import MODE_LEVEL, MODE_TILT
 from .core.errors import ProjectionError
@@ -31,6 +32,11 @@ from .core.report_export import (
 from .core.specs import load_library_from_csv
 from .core.surfaces import CylindricalWall, PlanarWall, Surface
 from .core.throw import ProjectorSpec, image_size, required_lens_shift_v
+from .core.warp_export import (
+    build_warp_grid,
+    export_warp_grids_to_json,
+    export_warp_meshes_to_obj,
+)
 from .scene_ids import OWNER_ID, OWNER_KEY
 from .scene_sync import (
     SyncScope,
@@ -878,6 +884,102 @@ class PJ_OT_export_analysis(Operator):
         return {"FINISHED"}
 
 
+class PJ_OT_export_warp(Operator):
+    """Export per-projector warp and corner-pin grids as design-phase targets"""
+
+    bl_idname = "projection.export_warp"
+    bl_label = "Export Warp Grids"
+    bl_description = (
+        "Save per-projector corner-pin points and warp mesh grids for media "
+        "processors. Design-phase geometry, not a calibration substitute"
+    )
+    bl_options = {"REGISTER"}
+
+    filepath: StringProperty(subtype="FILE_PATH")
+    export_format: EnumProperty(
+        name="Format",
+        items=[
+            (
+                "JSON",
+                "JSON (.json)",
+                "Schema-versioned warp grids: lattice vertices in wall and "
+                "world space, image UVs, corner-pin points",
+            ),
+            (
+                "OBJ",
+                "OBJ (.obj)",
+                "UV-mapped OBJ mesh on the wall, one object per projector",
+            ),
+        ],
+        default="JSON",
+    )
+    resolution: IntProperty(
+        name="Grid resolution",
+        description="Lattice samples per axis in each projector's warp grid",
+        default=16,
+        min=2,
+        max=64,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return context.scene.pj.has_report
+
+    def invoke(self, context, event):
+        if not self.filepath:
+            ext = ".json" if self.export_format == "JSON" else ".obj"
+            self.filepath = f"projection_warp{ext}"
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
+
+    def execute(self, context):
+        if not self.filepath:
+            self.report({"WARNING"}, "No export file path specified")
+            return {"CANCELLED"}
+
+        scene = context.scene
+        try:
+            _wall_obj, wall, footprints, _report, _warnings = _sync_analysis_inputs(scene)
+        except ProjectionError as exc:
+            self.report({"ERROR"}, f"Analysis failed: {exc}")
+            return {"CANCELLED"}
+        if not footprints:
+            self.report({"WARNING"}, "No projectors to export warp grids for")
+            return {"CANCELLED"}
+
+        try:
+            grids = [
+                build_warp_grid(fp, resolution=self.resolution)
+                for _obj, _spec, fp in footprints
+            ]
+        except ProjectionError as exc:
+            self.report({"ERROR"}, f"Warp grid failed: {exc}")
+            return {"CANCELLED"}
+
+        version = ".".join(str(part) for part in bl_info["version"])
+        generator = f"Projection Planner {version}"
+
+        filepath = self.filepath
+        if self.export_format == "JSON":
+            if not filepath.lower().endswith(".json"):
+                filepath += ".json"
+            content = export_warp_grids_to_json(wall, grids, generator=generator)
+        else:
+            if not filepath.lower().endswith(".obj"):
+                filepath += ".obj"
+            content = export_warp_meshes_to_obj(wall, grids)
+
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(content)
+        except OSError as exc:
+            self.report({"ERROR"}, f"Failed to write export file: {exc}")
+            return {"CANCELLED"}
+
+        self.report({"INFO"}, f"Exported {self.export_format} warp grids to {filepath}")
+        return {"FINISHED"}
+
+
 _CLASSES = (
     PJ_OT_create_curved_wall,
     PJ_OT_create_flat_wall,
@@ -894,6 +996,7 @@ _CLASSES = (
     PJ_OT_apply_preset_spec,
     PJ_OT_import_spec_csv,
     PJ_OT_export_analysis,
+    PJ_OT_export_warp,
 )
 
 

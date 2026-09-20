@@ -962,6 +962,50 @@ def main() -> None:
     check("ANSI/INFOCOMM V202.01" in report_text_discas, "report carries DISCAS disclaimer")
     check("Farthest" in report_text_discas, "report lists evaluated farthest viewer")
 
+    # -- 4i. warp grid export (increment #4 phase 2) -----------------------
+    print("\n[4i] warp grid export")
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        warp_json = str(Path(tmp_dir) / "test_warp.json")
+        res_warp = bpy.ops.projection.export_warp(
+            filepath=warp_json, export_format="JSON", resolution=8
+        )
+        check(res_warp == {"FINISHED"}, "export_warp JSON finished")
+        check(Path(warp_json).exists(), "warp JSON export file exists on disk")
+        warp_data = json.loads(Path(warp_json).read_text(encoding="utf-8"))
+        check(warp_data["schema_version"] == 1, "warp JSON schema version is 1")
+        check(
+            "design-phase" in warp_data["disclaimer"].lower(),
+            "warp JSON carries the design-phase disclaimer",
+        )
+        check(len(warp_data["projectors"]) == 3, "warp JSON has one grid per projector")
+        warp_entry = warp_data["projectors"][0]
+        check(
+            warp_entry["columns"] == 8 and warp_entry["rows"] == 8,
+            "warp grid resolution honoured",
+        )
+        check(len(warp_entry["valid"]) == 64, "warp grid validity array matches resolution")
+        check(any(warp_entry["valid"]), "warp grid has illuminated vertices")
+
+        warp_obj_path = str(Path(tmp_dir) / "test_warp.obj")
+        res_warp_obj = bpy.ops.projection.export_warp(
+            filepath=warp_obj_path, export_format="OBJ", resolution=8
+        )
+        check(res_warp_obj == {"FINISHED"}, "export_warp OBJ finished")
+        check(Path(warp_obj_path).exists(), "warp OBJ export file exists on disk")
+        warp_obj_content = Path(warp_obj_path).read_text(encoding="utf-8")
+        check(
+            "design-phase" in warp_obj_content.lower(),
+            "warp OBJ carries the design-phase note",
+        )
+        check(
+            sum(1 for line in warp_obj_content.splitlines() if line.startswith("o ")) == 3,
+            "warp OBJ has one object per projector",
+        )
+        check(
+            sum(1 for line in warp_obj_content.splitlines() if line.startswith("f ")) > 0,
+            "warp OBJ has faces",
+        )
+
     # -- 5. teardown is clean ----------------------------------------------
     print("\n[5] clear analysis and unregister")
     other_scene = bpy.data.scenes.new("Other Projection Scene")

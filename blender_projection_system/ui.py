@@ -337,6 +337,12 @@ class PJ_PT_report(_Base):
         row = layout.row(align=True)
         row.operator("projection.copy_report", text="Copy Text", icon="COPYDOWN")
         row.operator("projection.export_analysis", text="Export JSON / CSV", icon="EXPORT")
+        row = layout.row(align=True)
+        row.operator(
+            "projection.export_warp",
+            text="Export Warp Grids",
+            icon="MESH_GRID",
+        )
 
         info = layout.box()
         warn = None

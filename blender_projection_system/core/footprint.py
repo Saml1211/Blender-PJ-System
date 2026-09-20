@@ -17,7 +17,13 @@ from .errors import ProjectionError
 from .photometry import BrightnessReport, illuminance_at, summarize_brightness
 from .pose import Pose
 from .surfaces import Surface, SurfaceHit
-from .throw import ProjectorSpec, grid_boundary_indices, grid_uv, ray_direction_local
+from .throw import (
+    CORNER_UV,
+    ProjectorSpec,
+    grid_boundary_indices,
+    grid_uv,
+    ray_direction_local,
+)
 from .vectors import Vec3, dot, normalize, sub
 from .vectors import distance as vec_distance
 
@@ -308,6 +314,24 @@ def footprint_corners_world(fp: Footprint) -> list[Vec3]:
         hit = fp.samples[idx].hit
         if hit is not None:
             out.append(hit.point)
+    return out
+
+
+def footprint_corner_hits(fp: Footprint) -> list[tuple[tuple[float, float], Vec3]]:
+    """Image corners that landed on the wall, each with its image ``(u, v)``.
+
+    In :data:`throw.CORNER_UV` order; corners that missed the wall are
+    omitted, so callers must check the length. Kept deliberately separate
+    from :func:`footprint_corners_world` so the corner-index layout is
+    described once per accessor and their agreement is test-enforced.
+    """
+    n = fp.grid
+    corner_indices = (0, n - 1, n * n - 1, n * (n - 1))
+    out: list[tuple[tuple[float, float], Vec3]] = []
+    for (u, v), idx in zip(CORNER_UV, corner_indices, strict=True):
+        hit = fp.samples[idx].hit
+        if hit is not None:
+            out.append(((u, v), hit.point))
     return out
 
 

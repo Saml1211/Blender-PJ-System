@@ -1006,6 +1006,43 @@ def main() -> None:
             "warp OBJ has faces",
         )
 
+    # -- 4j. angle-aware gain profile (increment C, SMPTE RP 94) ----------
+    print("\n[4j] angle-aware gain profile")
+    for prop_name in ("gain_model", "gain_half_angle_deg", "gain_off_axis"):
+        check(hasattr(scene.pj, prop_name), f"scene exposes {prop_name}")
+
+    scene.pj.gain_model = "PEAKED"
+    scene.pj.screen_gain = 2.0
+    scene.pj.gain_half_angle_deg = 30.0
+    scene.pj.gain_off_axis = 0.6
+    check(live_sync.flush_scene_sync(scene), "peaked gain profile converges live")
+    report_text_gain = "\n".join(e.text for e in scene.pj.report_lines)
+    check("Gain profile: Peaked" in report_text_gain, "report displays the peaked gain profile")
+    check("RP 94" in report_text_gain, "report cites SMPTE RP 94 for the gain profile")
+    check(
+        "medium confidence" in report_text_gain,
+        "gain profile carries the medium-confidence disclaimer",
+    )
+    # The smoke target is a curved wall, so the >1.3 flat-wall flag must NOT fire.
+    check(
+        not any("flat wall" in e.text for e in scene.pj.report_lines),
+        "no flat-wall gain warning on the curved smoke wall",
+    )
+
+    scene.pj.gain_model = "RETROFLECTIVE"
+    check(live_sync.flush_scene_sync(scene), "retroflective gain profile converges live")
+    report_text_retro = "\n".join(e.text for e in scene.pj.report_lines)
+    check(
+        "Gain profile: Retroflective" in report_text_retro,
+        "report displays the retroflective gain profile",
+    )
+
+    scene.pj.gain_model = "LAMBERTIAN"
+    scene.pj.screen_gain = 1.0
+    check(live_sync.flush_scene_sync(scene), "scalar gain path converges live again")
+    report_text_scalar = "\n".join(e.text for e in scene.pj.report_lines)
+    check("Gain profile:" not in report_text_scalar, "scalar path hides the profile line")
+
     # -- 5. teardown is clean ----------------------------------------------
     print("\n[5] clear analysis and unregister")
     other_scene = bpy.data.scenes.new("Other Projection Scene")

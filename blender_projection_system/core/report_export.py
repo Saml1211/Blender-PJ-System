@@ -13,6 +13,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from .coverage import CoverageReport
+from .gain import GAIN_PROFILE_DISCLAIMER, GainModel, gain_model_label
 from .photometry import ISCR_CATEGORY_LABELS, ISCRCategory
 
 
@@ -209,6 +210,16 @@ def report_to_dict(
             ],
         }
 
+    if report.gain_profile is not None and report.gain_profile.kind is not GainModel.LAMBERTIAN:
+        gp = report.gain_profile
+        data["gain_profile"] = {
+            "kind": gp.kind.value,
+            "peak_gain": round(gp.peak_gain, 4),
+            "half_gain_angle_deg": round(gp.half_gain_angle_deg, 2),
+            "off_axis_gain": round(gp.off_axis_gain, 4),
+            "disclaimer": GAIN_PROFILE_DISCLAIMER,
+        }
+
     if rigging_items:
         data["rigging_schedule"] = [asdict(item) for item in rigging_items]
 
@@ -316,6 +327,13 @@ def export_coverage_summary_to_csv(
                     "nits",
                 ]
             )
+
+    if report.gain_profile is not None and report.gain_profile.kind is not GainModel.LAMBERTIAN:
+        gp = report.gain_profile
+        writer.writerow(["Gain", "Model", gain_model_label(gp.kind), ""])
+        writer.writerow(["Gain", "Peak", f"{gp.peak_gain:.2f}", "ratio"])
+        writer.writerow(["Gain", "Half-Gain Angle", f"{gp.half_gain_angle_deg:.1f}", "deg"])
+        writer.writerow(["Gain", "Off-Axis Floor", f"{gp.off_axis_gain:.2f}", "ratio"])
 
     if report.contrast:
         c = report.contrast

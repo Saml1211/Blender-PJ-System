@@ -97,7 +97,12 @@ def test_audit_viewers_conformance_and_angles():
     assert v_dict["FrontRowSide"].distance == pytest.approx(5.0)
     assert v_dict["FrontRowSide"].off_axis_deg == pytest.approx(math.degrees(math.atan(3.0 / 4.0)))
     assert v_dict["FrontRowSide"].off_axis_pass is True
-    assert v_dict["FrontRowSide"].perceived_nits == pytest.approx(200.0 * (4.0 / 5.0))
+    # Increment C (angle-aware gain, SMPTE RP 94) corrected the perceived
+    # luminance model: a Lambertian screen has NO viewing-angle falloff, so
+    # the old `mean · cos θ` factor (200 · 4/5) was physically wrong and is
+    # deliberately dropped. Angle-dependent falloff now comes from an
+    # explicit GainProfile (see tests/test_gain_profiles.py).
+    assert v_dict["FrontRowSide"].perceived_nits == pytest.approx(200.0)
 
     # WayTooFar at 35 m: fails both BDM and ADM
     assert v_dict["WayTooFar"].bdm_pass is False

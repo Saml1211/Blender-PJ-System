@@ -19,6 +19,7 @@ from .core.array import format_placement, plan_array
 from .core.coverage import analyze_coverage, format_report
 from .core.errors import ProjectionError
 from .core.footprint import compute_footprint
+from .core.gain import GainModel, GainProfile
 from .core.photometry import BlendModel, DerateChain, ISCRCategory, brightness_warnings
 from .core.pose import Pose
 from .core.throw import ProjectorSpec, describe_throw, image_size
@@ -262,6 +263,19 @@ def _analysis_inputs(scene: bpy.types.Scene):
         else None
     )
 
+    # An angle-aware gain model (SMPTE RP 94 idealisation) replaces the scalar
+    # Lambertian path. Construction validates the parameters, so an impossible
+    # half-gain/floor combination surfaces through the live-error path (ADR
+    # 0005: last valid scene preserved) instead of silently degrading.
+    gain_profile = None
+    if pj.gain_model != "LAMBERTIAN":
+        gain_profile = GainProfile(
+            kind=GainModel[pj.gain_model],
+            peak_gain=pj.screen_gain,
+            half_gain_angle_deg=pj.gain_half_angle_deg,
+            off_axis_gain=pj.gain_off_axis,
+        )
+
     viewers: list[tuple[str, tuple[float, float, float]]] = []
     if pj.enable_discas:
         if pj.farthest_viewer_distance > 0.0:
@@ -304,6 +318,7 @@ def _analysis_inputs(scene: bpy.types.Scene):
         viewers=viewers,
         discas_element_height_pct=pj.discas_element_height_pct,
         discas_vertical_resolution=pj.discas_vertical_resolution,
+        gain_profile=gain_profile,
     )
     warnings.extend(report.warnings)
     if report.brightness is not None:

@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from .errors import ProjectionError, require_positive
+from .gain import GainModel, GainProfile, assumptions_for_gain_profile
 from .throw import ProjectorSpec
 
 #: Conversion constants.
@@ -465,8 +466,14 @@ def assumptions_for_blend_model(
     model: BlendModel,
     gamma: float = 1.0,
     derate_chain: DerateChain | None = None,
+    gain_profile: GainProfile | None = None,
 ) -> list[str]:
-    """The assumption lines that apply to a given blend model and derate chain."""
+    """The assumption lines that apply to a given blend model and derate chain.
+
+    When a non-Lambertian :class:`~.gain.GainProfile` is active, the scalar
+    "Lambertian screen at the stated gain" line is replaced by the profile's
+    own assumption line (SMPTE RP 94 idealisation, medium confidence).
+    """
     base: list[str] = []
     for a in ASSUMPTIONS:
         if a.startswith("rated lumens"):
@@ -477,6 +484,11 @@ def assumptions_for_blend_model(
                     f"aging {derate_chain.aging_factor * 100:.0f}%, "
                     f"lens transmission {derate_chain.lens_transmission * 100:.0f}%"
                 )
+            else:
+                base.append(a)
+        elif a.startswith("Lambertian screen"):
+            if gain_profile is not None and gain_profile.kind is not GainModel.LAMBERTIAN:
+                base.append(assumptions_for_gain_profile(gain_profile))
             else:
                 base.append(a)
         elif a.startswith("overlapping"):

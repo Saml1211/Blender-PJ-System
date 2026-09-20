@@ -17,6 +17,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from .errors import ProjectionError, require_positive
+from .gain import GainModel, GainProfile, factor_at, lobe_axis, viewing_angle_deg
 from .vectors import Vec3, distance, dot, normalize, sub
 
 ARCMINUTE_RAD = math.radians(1.0 / 60.0)
@@ -101,8 +102,20 @@ def audit_viewers(
     vertical_resolution: int = 1080,
     element_height_pct: float = 3.0,
     max_off_axis_deg: float = 45.0,
+    gain_profile: GainProfile | None = None,
+    projector_origin: Vec3 | None = None,
 ) -> DiscasReport:
-    """Evaluate a set of viewer positions against DISCAS criteria."""
+    """Evaluate a set of viewer positions against DISCAS criteria.
+
+    ``gain_profile`` optionally applies an angle-aware gain model
+    (SMPTE RP 94 idealisations, see :mod:`.gain`) to the per-seat perceived
+    luminance. Without one, perceived luminance is view-independent — the
+    honest Lambertian behaviour. Before increment C this function applied a
+    ``mean · cos θ`` falloff, which is *not* Lambertian behaviour (a Lambertian
+    screen has no viewing-angle falloff) and was corrected deliberately.
+    A retroflective profile aims its lobe at ``projector_origin`` and raises
+    :class:`ProjectionError` when that position is not supplied.
+    """
     require_positive("image height", image_height)
     d_max_bdm = bdm_max_viewing_distance(image_height, element_height_pct)
     d_max_adm = adm_max_viewing_distance(image_height, vertical_resolution)
@@ -122,8 +135,18 @@ def audit_viewers(
             angle_deg = 0.0
             cos_theta = 1.0
 
-        # Off-axis perceived luminance (Lambertian cosine falloff with viewing angle)
-        perceived = max(0.0, mean_screen_nits * cos_theta)
+        # Off-axis perceived luminance. No profile (or a Lambertian one):
+        # view-independent — luminance is luminance. Peaked: the gain curve
+        # falls off with the angle from the screen normal. Retroflective: the
+        # lobe aims at the projector, so the angle is measured from that axis.
+        if gain_profile is None or gain_profile.kind is GainModel.LAMBERTIAN:
+            factor = 1.0
+        elif gain_profile.kind is GainModel.PEAKED:
+            factor = factor_at(gain_profile, angle_deg)
+        else:
+            axis = lobe_axis(gain_profile, screen_center, norm, projector_origin)
+            factor = factor_at(gain_profile, viewing_angle_deg(loc, screen_center, axis))
+        perceived = max(0.0, mean_screen_nits * factor)
         bdm_pass = dist <= d_max_bdm
         adm_pass = dist <= d_max_adm
         closest_pass = dist >= d_min

@@ -711,6 +711,63 @@ class PJ_PG_Scene(PropertyGroup):
         precision=2,
         update=_update_analysis,
     )
+    gain_model: EnumProperty(
+        name="Gain Model",
+        description=(
+            "Screen gain model per SMPTE RP 94 idealisations. Lambertian is the "
+            "scalar model (constant gain at every angle); peaked and retroflective "
+            "shape the gain with a half-gain angle and an off-axis floor. "
+            "Parametric idealisations at medium confidence - vendor gain-curve "
+            "charts not consulted"
+        ),
+        items=[
+            (
+                "LAMBERTIAN",
+                "Lambertian (scalar)",
+                "Constant gain at every viewing angle - the scalar model",
+            ),
+            (
+                "PEAKED",
+                "Peaked (specular lobe)",
+                "Lobe centred on the screen normal: peak gain on-axis, half-gain "
+                "angle and off-axis floor shape the falloff",
+            ),
+            (
+                "RETROFLECTIVE",
+                "Retroflective (toward source)",
+                "Lobe centred on the direction toward the projector - glass-beaded "
+                "screens return light to the source",
+            ),
+        ],
+        default="LAMBERTIAN",
+        update=_update_analysis,
+    )
+    gain_half_angle_deg: FloatProperty(
+        name="Half-Gain Angle",
+        description=(
+            "Viewing angle (deg) at which gain has fallen to half its peak - the "
+            "datasheet number integrators quote. Used by the peaked and "
+            "retroflective models only"
+        ),
+        default=30.0,
+        min=1.0,
+        max=89.0,
+        precision=1,
+        update=_update_analysis,
+    )
+    gain_off_axis: FloatProperty(
+        name="Off-Axis Floor Gain",
+        description=(
+            "Gain far off the lobe axis; must sit below half the peak for a "
+            "half-gain angle to exist. Used by the peaked and retroflective "
+            "models only"
+        ),
+        default=0.6,
+        min=0.01,
+        max=2.49,
+        precision=2,
+        update=_update_analysis,
+    )
     ambient_lux: FloatProperty(
         name="Ambient Illuminance",
         description="Ambient illuminance at the screen surface (lux) from room lighting/survey. 0 = dark room",

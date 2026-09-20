@@ -263,6 +263,13 @@ class PJ_PT_analysis(_Base):
         row.prop(pj, "grid_s", text="Grid Arc")
         row.prop(pj, "grid_z", text="Height")
         col.prop(pj, "screen_gain")
+        col.prop(pj, "gain_model", text="Gain Model")
+        if pj.gain_model != "LAMBERTIAN":
+            g_col = col.column(align=True)
+            g_col.prop(pj, "gain_half_angle_deg", text="Half-Gain Angle")
+            g_col.prop(pj, "gain_off_axis", text="Off-Axis Floor")
+            g_col.label(text="RP 94 parametric idealisation;", icon="INFO")
+            g_col.label(text="medium confidence, not vendor-measured")
         col.prop(pj, "blend_model", text="Overlap")
         if pj.blend_model == "GAMMA_RAMP":
             col.prop(pj, "blend_gamma", text="Blend Gamma")

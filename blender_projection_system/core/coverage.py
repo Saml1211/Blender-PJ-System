@@ -19,6 +19,13 @@ from dataclasses import dataclass, field
 from .discas import DiscasReport, audit_viewers
 from .errors import ProjectionError
 from .footprint import Footprint
+from .gain import (
+    GAIN_CITATION,
+    GainProfile,
+    flat_wall_gain_warning,
+    gain_model_label,
+    half_gain_cone_warnings,
+)
 from .occlusion import RAY_TOLERANCE, OcclusionCaster
 from .photometry import (
     ISCR_CATEGORY_LABELS,
@@ -151,6 +158,8 @@ class CoverageReport:
     blend_model: BlendModel = BlendModel.RAW
     blend_gamma: float = 1.0
     derate_chain: DerateChain | None = None
+    gain_profile: GainProfile | None = None
+    """The angle-aware gain model applied, or ``None`` for the scalar Lambertian model."""
     """How overlapping illuminance was combined - see :class:`BlendModel`."""
     projector_occlusions: dict[str, ProjectorOcclusion] = field(default_factory=dict)
     """Per-projector occlusion tallies; empty when no occluders are in play."""
@@ -228,6 +237,7 @@ def analyze_coverage(
     viewers: Sequence[tuple[str, Vec3]] = (),
     discas_element_height_pct: float = 3.0,
     discas_vertical_resolution: int = 1080,
+    gain_profile: GainProfile | None = None,
 ) -> CoverageReport:
     """Rasterised coverage, gap, overlap and brightness analysis for a wall.
 
@@ -245,6 +255,13 @@ def analyze_coverage(
     left dark by occlusion are listed in :attr:`CoverageReport.shadowed_cells`
     and warned about loudly. With ``None`` (the default) nothing is occluded
     and the report is identical to the unoccluded analysis.
+
+    ``gain_profile`` optionally replaces the scalar Lambertian gain with an
+    angle-aware SMPTE RP 94 idealisation (:mod:`.gain`). When given, its peak
+    is the on-axis scalar gain every luminance conversion uses, the per-seat
+    DISCAS audit gains the angle-aware correction, and RP 94-derived warnings
+    (flat-wall peak gain, half-gain cone) ride with the report. The scalar
+    ``screen_gain`` is ignored in that case.
     """
     if grid_s < 1 or grid_z < 1:
         raise ProjectionError("coverage grid dimensions must be at least 1")
@@ -259,6 +276,14 @@ def analyze_coverage(
         cell_area=ds * dz,
         total_cells=grid_s * grid_z,
     )
+    # An explicit gain profile defines the scalar on-axis gain too: its peak is
+    # the number every luminance conversion uses. Without one, the scalar
+    # Lambertian path is byte-for-byte the pre-increment behaviour.
+    if gain_profile is not None:
+        report.gain_profile = gain_profile
+        effective_gain = gain_profile.peak_gain
+    else:
+        effective_gain = screen_gain
 
     usable = [fp for fp in footprints if fp.hit_ratio > 0.0]
     if not usable:
@@ -340,8 +365,8 @@ def analyze_coverage(
     if lux_grid:
         report.brightness = summarize_brightness(
             lux_grid,
-            screen_gain,
-            assumptions_for_blend_model(blend_model, blend_gamma, derate_chain),
+            effective_gain,
+            assumptions_for_blend_model(blend_model, blend_gamma, derate_chain, gain_profile),
             derate_chain=derate_chain,
         )
     if contrast_grid and (
@@ -350,7 +375,7 @@ def analyze_coverage(
         report.contrast = summarize_contrast(
             contrast_grid,
             ambient_lux,
-            screen_gain,
+            effective_gain,
             target_category=iscr_category,
             user_target_ratio=target_contrast_ratio,
         )
@@ -370,7 +395,7 @@ def analyze_coverage(
                     s_max=s_max,
                     z_min=report.covered_z_min,
                     z_max=report.covered_z_max,
-                    screen_gain=screen_gain,
+                    screen_gain=effective_gain,
                     blend_model=blend_model,
                     blend_gamma=blend_gamma,
                     occlusion_caster=occlusion_caster,
@@ -387,6 +412,16 @@ def analyze_coverage(
         screen_normal = wall.normal_at_s(mid_s)
         mean_nits = report.brightness.mean_nits if report.brightness else 150.0
         h = max(0.1, report.covered_height)
+        # A retroflective profile aims its lobe at the projector: use the
+        # centroid of the lens origins as the reference direction, stated in
+        # the profile's assumption line rather than hidden.
+        projector_origin = None
+        if gain_profile is not None and gain_profile.is_angular:
+            projector_origin = (
+                sum(fp.pose.origin[0] for fp in usable) / len(usable),
+                sum(fp.pose.origin[1] for fp in usable) / len(usable),
+                sum(fp.pose.origin[2] for fp in usable) / len(usable),
+            )
         report.discas = audit_viewers(
             viewers=viewers,
             screen_center=screen_center,
@@ -395,9 +430,17 @@ def analyze_coverage(
             mean_screen_nits=mean_nits,
             vertical_resolution=discas_vertical_resolution,
             element_height_pct=discas_element_height_pct,
+            gain_profile=gain_profile,
+            projector_origin=projector_origin,
         )
 
     report.warnings.extend(_coverage_warnings(report))
+    if gain_profile is not None:
+        flat_wall = flat_wall_gain_warning(gain_profile, wall)
+        if flat_wall:
+            report.warnings.append(flat_wall)
+        if report.discas is not None:
+            report.warnings.extend(half_gain_cone_warnings(gain_profile, report.discas.viewers))
     return report
 
 
@@ -839,6 +882,15 @@ def format_report(report: CoverageReport) -> list[str]:
                 f"{b.rated_band.mean_nits:.0f} / {b.typical_band.mean_nits:.0f} / {b.worst_case_band.mean_nits:.0f} nits "
                 f"({b.rated_band.mean_lux:.0f} / {b.typical_band.mean_lux:.0f} / {b.worst_case_band.mean_lux:.0f} lux)"
             )
+    if report.gain_profile is not None and report.gain_profile.is_angular:
+        gp = report.gain_profile
+        lines.append(
+            f"Gain profile: {gain_model_label(gp.kind)} "
+            f"(peak {gp.peak_gain:.2f}, half-gain {gp.half_gain_angle_deg:.0f} deg, "
+            f"floor {gp.off_axis_gain:.2f}) per {GAIN_CITATION}; "
+            "parametric idealisation at medium confidence - vendor gain-curve "
+            "charts not consulted"
+        )
     if report.blend_model is BlendModel.LINEAR_RAMP:
         lines.append("Overlap luminance uses a linear-ramp blend model; see brightness assumptions")
     elif report.blend_model is BlendModel.GAMMA_RAMP:

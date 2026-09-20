@@ -42,6 +42,15 @@ from .discas import (
 )
 from .errors import ProjectionError
 from .footprint import Footprint, FootprintSample, compute_footprint
+from .gain import (
+    GAIN_PROFILE_DISCLAIMER,
+    RP94_FLAT_WALL_MAX_PEAK,
+    GainModel,
+    GainProfile,
+    factor_at,
+    gain_at,
+    gain_model_label,
+)
 from .photometry import (
     ASSUMPTIONS,
     BrightnessReport,
@@ -87,6 +96,9 @@ __all__ = [
     "DiscasReport",
     "Footprint",
     "FootprintSample",
+    "GAIN_PROFILE_DISCLAIMER",
+    "GainModel",
+    "GainProfile",
     "ImageSize",
     "Interval",
     "MODE_LEVEL",
@@ -96,6 +108,7 @@ __all__ = [
     "ProjectionError",
     "ProjectorPlacement",
     "ProjectorSpec",
+    "RP94_FLAT_WALL_MAX_PEAK",
     "RiggingItem",
     "SurfaceHit",
     "ThrowReport",
@@ -114,9 +127,12 @@ __all__ = [
     "export_analysis_summary_to_csv",
     "export_analysis_to_json",
     "export_rigging_schedule_to_csv",
+    "factor_at",
     "format_placement",
     "format_report",
     "frustum_solid_angle",
+    "gain_at",
+    "gain_model_label",
     "half_angles",
     "illuminance_at",
     "image_height_from_width",

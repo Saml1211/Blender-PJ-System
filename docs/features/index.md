@@ -359,10 +359,50 @@ Implements display sizing mathematics per ANSI/INFOCOMM V202.01 (DISCAS):
   `D_max = (H / V_res) / tan(1 arcmin)`.
 - **Closest viewer limit:** Minimum recommended distance `D_min = H · 1.0`.
 - **Per-seat off-axis audit:** Computes viewer distance, horizontal off-axis
-  angle relative to screen normal, and perceived Lambertian luminance
-  (`L_mean · cos θ`), auditing scene objects (`Viewer*`, `Seat*`) or user-entered
-  farthest viewer distance.
+  angle relative to screen normal, and perceived luminance — view-independent
+  for the (default) Lambertian case, shaped by the selected gain profile for
+  peaked/retroflective screens (see the angle-aware gain model below) —
+  auditing scene objects (`Viewer*`, `Seat*`) or user-entered farthest viewer
+  distance.
 - Mandatory disclaimer: *"Calculated per ANSI/INFOCOMM V202.01 (DISCAS) geometric equations; evaluates mathematical sizing limits, does not certify human vision."*
+
+---
+
+## Angle-aware gain model — `core/gain.py`, `core/discas.py`, `core/coverage.py`
+
+Replaces the scalar Lambertian gain assumption with a `gain(viewing_angle)`
+profile family per SMPTE RP 94-2000, *Gain Determination of Front Projection
+Screens*:
+
+- **Lambertian (default):** the scalar model — constant gain at every viewing
+  angle; luminance is view-independent.
+- **Peaked:** specular lobe centred on the screen normal — peak gain on-axis,
+  half-gain angle (the datasheet number integrators quote), off-axis floor
+  gain. The curve is a cosine-power idealisation fitted so that
+  `gain(half-gain angle)` equals exactly half the peak.
+- **Retroflective:** the same curve with the lobe centred on the direction
+  toward the projector (glass-beaded screens return light to the source);
+  per-seat angles are measured from that axis.
+
+RP 94-derived warnings:
+
+- Viewers outside the half-gain cone are flagged by name with their perceived
+  luminance.
+- Peak gain above ~1.3 on a flat wall is flagged (curved screens recommended
+  above 1.3) via the Surface ABC `curvature_radius` hook; curvature itself is
+  flagged, never modelled.
+
+Per-seat correction: the DISCAS audit's perceived luminance is view-independent
+for Lambertian screens (the earlier `L_mean · cos θ` falloff was not Lambertian
+behaviour and was corrected in this increment); peaked/retroflective profiles
+apply `factor(θ)` to it, so "seat 14 at 31° off-axis" now answers with the
+screen's actual reflectance shape.
+
+**Honesty (ADR 0002):** the curves are three-parameter parametric idealisations
+at **medium confidence** — vendor gain-curve charts (Stewart, dnp, Elite) were
+not consulted. The disclaimer rides with every surfaced number: the report
+assumption line, the report's gain-profile line, the JSON/CSV export, and the
+panel note. On-site gain verification is always required.
 
 ---
 

@@ -174,9 +174,11 @@ Kept deliberately: several of these are attractive and may be worth building lat
 
 **Revisit trigger.** ALR: if vendor measured gain/angle curves become available in a usable format, feed them to the angle-aware gain profile (see 4.10) rather than inventing scalars. The others: no realistic trigger; they are parked permanently unless the project's scope statement changes.
 
-### 4.10 Angle-aware gain model on the Surface ABC *(adjacent S/M idea worth keeping visible)*
+### 4.10 Angle-aware gain model on the Surface ABC *(Landed in `9e95929`)*
 
 Replace the scalar Lambertian gain assumption with a `gain(viewing_angle)` profile family: Lambertian (today's model), retroflective, and a peaked profile parameterised by peak gain + half-gain angle (SMPTE RP 94 is the primary source; half-gain is the datasheet number integrators quote). Emit RP 94-derived warnings: viewers outside the half-gain cone; peak gain > 1.3 on a flat wall (RP 94 recommends curved screens above 1.3 — flag, don't model curvature). **Why not in the shortlist:** it matters mainly for gain-screen installs and its parametric curves are idealisations (disclose as three-parameter models). **Revisit trigger:** #3's photometry cycle landing well, plus 2–3 vendor gain-curve charts (Stewart, dnp, Elite) to validate the profile shape — it then becomes the natural next `photometry.py` increment and the foundation for the per-seat audit's off-axis correction.
+
+**Landed note:** the photometry cycle had landed well; Sam authorised moving without the vendor gain-curve charts, so the shipped curves are the three-parameter parametric idealisations with the medium-confidence disclaimer riding every surfaced number (plan record: `docs/plans/2026-09-20-gitnexus-plan-gain-profiles.md`).
 
 ---
 

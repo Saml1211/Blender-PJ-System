@@ -1,6 +1,6 @@
 # Plan — Increment #4 Phase 2: warp/corner-pin grid export
 
-**Date:** 2026-09-20 · **Status:** Ready to execute · **Base:** `main` @ `ba154c4` (v0.6.0)
+**Date:** 2026-09-20 · **Status:** Landed — feat `dd7820b` · **Base:** `main` @ `ba154c4` (v0.6.0)
 **Increment spec:** `docs/features/next-increments.md` §2 #4 phase 2
 **Standing constraints:** ADR 0001 (bpy-free `core/`), ADR 0002 (design-phase targets, never calibration), ADR 0003 (Surface ABC), repo AGENTS.md (impact analysis before edit, detect-changes before commit)
 

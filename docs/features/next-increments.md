@@ -74,7 +74,7 @@ Effort scale: **S** = single module + tests; **M** = 2–4 modules or a new Blen
 
 **Builds on.** `core/photometry.py` multiplicative inputs; the coverage raster it already produces; the report pipeline.
 
-### #4 — Structured handoff export: analysis JSON/CSV + rigging/mount schedule *(S/M, phase 1 — Landed in `a84e162`; M/L, phase 2)*
+### #4 — Structured handoff export: analysis JSON/CSV + rigging/mount schedule *(S/M, phase 1 — Landed in `a84e162`; phase 2 — Landed in `dd7820b`)*
 
 **What.** Phase 1: serialize the existing report dataclasses (`CoverageReport`, `BrightnessReport`, `ArraySyncResult` placements) to JSON and the coverage raster to CSV, plus a rigging table (unit, mount x/y/z, throw, aim fraction) appended to report and CSV. One new operator, output path via the Blender file browser. Phase 2: per-projector corner/warp grids derived from the existing back-projection, exported toward processors (TouchDesigner/Resolume/media servers) — worded honestly as design-phase targets, not calibration.
 

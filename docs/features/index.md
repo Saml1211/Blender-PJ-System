@@ -322,6 +322,32 @@ Direct export of all analysis results to structured, machine-readable formats:
 
 ---
 
+## Warp & corner-pin grid export — `core/warp_export.py`, `operators.py`
+
+Per-projector mapping from the wall to each projector's image, for feeding
+media processors (TouchDesigner, Resolume, media servers). Derived entirely
+from the existing back-projection (`Footprint.image_uv_of`).
+
+- **JSON (`schema_version: 1`):** per projector, a lattice over the
+  projector's illuminated wall region — each vertex carries its wall
+  coordinates `(s, z)` in metres, its world position, and the normalized
+  image UV that lands there (`(0, 0)` at the image's top-left; vertices the
+  image does not reach are marked invalid with no UV). Corner-pin points
+  carry their image UVs and are flagged incomplete when any image corner
+  misses the wall. The wall's arc coordinate `s` is unwrapped on full-circle
+  walls and may fall outside `[0, arc_length]` for continuity.
+- **OBJ:** one UV-mapped mesh object per projector in world-space metres.
+  Faces are emitted only where all four lattice corners are illuminated;
+  unused vertices are omitted.
+- **Honesty (ADR 0002):** every export carries the disclaimer that these are
+  *design-phase geometric targets computed from the add-on's model — not a
+  calibration substitute*. On a curved wall four corner points can never
+  represent the projected geometry — use the mesh grid. Occlusion is
+  deliberately not part of the mapping: occluders change what gets
+  illuminated, not where the processor's output geometry maps.
+
+---
+
 ## DISCAS / Per-seat viewer audit — `core/discas.py`
 
 Implements display sizing mathematics per ANSI/INFOCOMM V202.01 (DISCAS):

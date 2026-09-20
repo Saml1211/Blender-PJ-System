@@ -42,6 +42,7 @@ This is **v0.5**. The table below is the whole truth about what works.
 | Ambient effective contrast | Ambient illuminance (lux) × screen gain → veiling luminance; per-cell effective contrast `(L_white + L_amb) / (L_black + L_amb)` using native contrast. Evaluated against AVIXA ISCR categories (ANSI/AVIXA V201.01:2021). |
 | ANSI/IEC 9-point output | Samples 3×3 equal zone centers for total light output (lumens) and center-to-corner uniformity ratio in datasheet terms (nits and foot-lamberts). |
 | Structured handoff export | Serializes full coverage, photometry, and rigging schedules (coordinates, angles, throws, shifts, specs, 3D corners) to machine-readable JSON (`schema_version: 1`) and CSV. |
+| Warp grid export | Per-projector corner-pin points and warp mesh grids (wall `(s, z)` lattice with image UVs, UV-mapped OBJ meshes) for media processors — **design-phase targets, not calibration**. |
 | DISCAS viewer audit | Per-seat viewer distance and off-axis angle checks per ANSI/INFOCOMM V202.01: BDM 10-arcminute font legibility, ADM 1-arcminute single-pixel resolution, and closest viewer limits. |
 | Brightness | Illuminance and luminance from real per-point distance and incidence. **First-order estimate — see the assumptions below.** |
 | Realtime parametric scene | Generated flat and curved walls are driven by an owned Geometry Nodes group. Wall, array, projector, and analysis controls automatically converge cameras, overlays, computed fields, and the report after a short idle debounce. |

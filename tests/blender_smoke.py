@@ -1043,6 +1043,47 @@ def main() -> None:
     report_text_scalar = "\n".join(e.text for e in scene.pj.report_lines)
     check("Gain profile:" not in report_text_scalar, "scalar path hides the profile line")
 
+    # -- 4k. on-site calibration loop (increment D) ------------------------
+    print("\n[4k] on-site calibration loop")
+    for prop_name in ("enable_calibration", "calibration_readings", "calibration_index"):
+        check(hasattr(scene.pj, prop_name), f"scene exposes {prop_name}")
+
+    scene.pj.enable_calibration = True
+    readings = scene.pj.calibration_readings
+    for label, s_pos, lux in (("Alpha", 6.0, 400.0), ("Bravo", 6.3, 420.0), ("Charlie", 6.6, 440.0)):
+        row = readings.add()
+        row.label = label
+        row.s = s_pos
+        row.z = 1.5
+        row.measured_lux = lux
+    check(len(readings) == 3, "three calibration readings recorded")
+    check(live_sync.flush_scene_sync(scene), "calibrated analysis converges live")
+    report_text_cal = "\n".join(e.text for e in scene.pj.report_lines)
+    check("Calibration: predictions scaled by" in report_text_cal, "report displays the fitted factor")
+    check("Residual:" in report_text_cal, "report displays the residual statistics")
+    check("'Alpha'" in report_text_cal, "report lists per-reading residuals")
+    check("not verify" in report_text_cal, "report refuses verified-language claims")
+
+    import json as _json
+    import tempfile as _tempfile
+    from pathlib import Path as _Path
+
+    with _tempfile.TemporaryDirectory() as tmp_dir:
+        cal_json = str(_Path(tmp_dir) / "test_cal.json")
+        res_cal = bpy.ops.projection.export_analysis(filepath=cal_json, export_format="JSON")
+        check(res_cal == {"FINISHED"}, "export_analysis finished with calibration")
+        cal_data = _json.loads(_Path(cal_json).read_text(encoding="utf-8"))
+        check(
+            "calibration" in cal_data and cal_data["calibration"]["reading_count"] == 3,
+            "exported JSON carries the calibration block",
+        )
+
+    scene.pj.calibration_readings.clear()
+    scene.pj.enable_calibration = False
+    check(live_sync.flush_scene_sync(scene), "uncalibrated path converges live again")
+    report_text_uncal = "\n".join(e.text for e in scene.pj.report_lines)
+    check("Calibration:" not in report_text_uncal, "disabled calibration hides the block")
+
     # -- 5. teardown is clean ----------------------------------------------
     print("\n[5] clear analysis and unregister")
     other_scene = bpy.data.scenes.new("Other Projection Scene")

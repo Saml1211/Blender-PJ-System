@@ -16,6 +16,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
+from .calibration import CalibrationFit
 from .discas import DiscasReport, audit_viewers
 from .errors import ProjectionError
 from .footprint import Footprint
@@ -160,6 +161,9 @@ class CoverageReport:
     derate_chain: DerateChain | None = None
     gain_profile: GainProfile | None = None
     """The angle-aware gain model applied, or ``None`` for the scalar Lambertian model."""
+    calibration: CalibrationFit | None = None
+    """Fitted on-site correction applied to the predictions, with its residual
+    statistics; ``None`` while the analysis runs uncalibrated."""
     """How overlapping illuminance was combined - see :class:`BlendModel`."""
     projector_occlusions: dict[str, ProjectorOcclusion] = field(default_factory=dict)
     """Per-projector occlusion tallies; empty when no occluders are in play."""
@@ -238,6 +242,7 @@ def analyze_coverage(
     discas_element_height_pct: float = 3.0,
     discas_vertical_resolution: int = 1080,
     gain_profile: GainProfile | None = None,
+    calibration: CalibrationFit | None = None,
 ) -> CoverageReport:
     """Rasterised coverage, gap, overlap and brightness analysis for a wall.
 
@@ -262,6 +267,12 @@ def analyze_coverage(
     DISCAS audit gains the angle-aware correction, and RP 94-derived warnings
     (flat-wall peak gain, half-gain cone) ride with the report. The scalar
     ``screen_gain`` is ignored in that case.
+
+    ``calibration`` optionally carries a fitted on-site correction
+    (:mod:`.calibration`): every per-cell illuminance is scaled by the fitted
+    factor and the fit - with its residual statistics - rides on
+    :attr:`CoverageReport.calibration`. ``None`` leaves the analysis
+    uncalibrated, byte-for-byte the pre-increment behaviour.
     """
     if grid_s < 1 or grid_z < 1:
         raise ProjectionError("coverage grid dimensions must be at least 1")
@@ -284,6 +295,8 @@ def analyze_coverage(
         effective_gain = gain_profile.peak_gain
     else:
         effective_gain = screen_gain
+    report.calibration = calibration
+    correction = calibration.factor if calibration is not None else 1.0
 
     usable = [fp for fp in footprints if fp.hit_ratio > 0.0]
     if not usable:
@@ -336,7 +349,7 @@ def analyze_coverage(
             )
         count = len(contributions)
         if count:
-            lux = _combined_illuminance(contributions, s, wall, blend_model, blend_gamma)
+            lux = _combined_illuminance(contributions, s, wall, blend_model, blend_gamma) * correction
             report.covered_cells += 1
             lux_grid.append(lux)
             covered_z.append(z)
@@ -344,8 +357,9 @@ def analyze_coverage(
                 (fp, lux_val / max(1.0, fp.spec.native_contrast))
                 for fp, lux_val in contributions
             ]
-            black_lux = _combined_illuminance(
-                black_contributions, s, wall, blend_model, blend_gamma
+            black_lux = (
+                _combined_illuminance(black_contributions, s, wall, blend_model, blend_gamma)
+                * correction
             )
             contrast_grid.append(effective_contrast_ratio(lux, black_lux, ambient_lux))
         else:
@@ -442,6 +456,48 @@ def analyze_coverage(
         if report.discas is not None:
             report.warnings.extend(half_gain_cone_warnings(gain_profile, report.discas.viewers))
     return report
+
+
+def predict_illuminance_at(
+    footprints: Sequence[Footprint],
+    wall: Surface,
+    s: float,
+    z: float,
+    blend_model: BlendModel = BlendModel.RAW,
+    blend_gamma: float = 1.0,
+    occlusion_caster: OcclusionCaster | None = None,
+) -> float:
+    """Projected illuminance (lux) the analysis model predicts at one wall position.
+
+    This is the raster cell computation applied at a single ``(s, z)``: the
+    same hit-ratio filter, ``covers()`` back-projection, occlusion filtering
+    and blend-aware combination the coverage raster uses, so a calibration
+    factor fitted against these predictions is consistent with the report it
+    corrects. Returns ``0.0`` where no projector's image lands; positions
+    outside the wall raise :class:`ProjectionError` naming the coordinates.
+    """
+    if not 0.0 <= s <= wall.arc_length or not 0.0 <= z <= wall.height:
+        raise ProjectionError(
+            f"reading position (s={s:.3f}, z={z:.3f}) lies outside the wall "
+            f"(arc 0-{wall.arc_length:.3f} m, height 0-{wall.height:.3f} m)"
+        )
+    point = wall.point_at(s, z)
+    normal = wall.normal_at_s(s)
+    contributions: list[tuple[Footprint, float]] = []
+    for fp in footprints:
+        if fp.hit_ratio <= 0.0:
+            continue
+        if not fp.covers(point):
+            continue
+        if occlusion_caster is not None:
+            direction = normalize(sub(point, fp.pose.origin))
+            reach = max(0.0, distance(fp.pose.origin, point) - RAY_TOLERANCE)
+            if occlusion_caster(fp.pose.origin, direction, reach):
+                continue
+        contributions.append((fp, _cell_illuminance(fp, point, normal)))
+    if not contributions:
+        return 0.0
+    return _combined_illuminance(contributions, s, wall, blend_model, blend_gamma)
 
 
 def compute_nine_point_report(
@@ -931,6 +987,34 @@ def format_report(report: CoverageReport) -> list[str]:
             f"9-point min/max {np.nine_point_uniformity:.2f}"
         )
         lines.append(f"  Disclaimer: {np.disclaimer}")
+    if report.calibration is not None:
+        cal = report.calibration
+        ambient_note = (
+            f" (ambient {cal.ambient_lux:.0f} lux included in the fit)"
+            if cal.ambient_lux > 0.0
+            else ""
+        )
+        lines.append(
+            f"Calibration: predictions scaled by x{cal.factor:.3f} from "
+            f"{cal.reading_count} on-site lux reading(s){ambient_note}"
+        )
+        lines.append(
+            f"  Residual: ratio spread {cal.min_ratio:.2f}-{cal.max_ratio:.2f} "
+            f"(mean {cal.mean_ratio:.2f}, sigma {cal.ratio_std:.2f}, "
+            f"CV {cal.ratio_cv * 100:.1f}%), worst residual "
+            f"{cal.worst_residual_pct * 100:.1f}%"
+        )
+        for reading, predicted in cal.samples:
+            model_total = predicted + cal.ambient_lux
+            ratio = reading.measured_lux / model_total if model_total > 0.0 else 0.0
+            lines.append(
+                f"  '{reading.label}' (s={reading.s:.2f}, z={reading.z:.2f}): "
+                f"measured {reading.measured_lux:.0f} lux, model "
+                f"{cal.factor * model_total:.0f} lux, ratio {ratio:.2f}"
+            )
+        for reading, reason in cal.excluded:
+            lines.append(f"  Excluded '{reading.label}': {reason}")
+        lines.append(f"  Disclaimer: {cal.disclaimer}")
     if report.discas:
         d = report.discas
         bdm_verdict = "PASS" if d.bdm_conforms else "FAIL"

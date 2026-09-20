@@ -680,6 +680,91 @@ class PJ_OT_clear_occluders(Operator):
 
 
 # ---------------------------------------------------------------------------
+# On-site calibration readings (increment D)
+# ---------------------------------------------------------------------------
+
+
+class PJ_OT_add_reading_cursor(Operator):
+    """Add a lux reading at the 3D cursor, projected onto the target wall"""
+
+    bl_idname = "projection.add_reading_cursor"
+    bl_label = "Add Reading at 3D Cursor"
+    bl_description = (
+        "Project the 3D cursor onto the target wall and record a reading row "
+        "there; fill in the measured lux from the handheld meter"
+    )
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        wall = context.scene.pj.target_wall
+        return wall is not None and wall.pj_wall.is_wall
+
+    def execute(self, context):
+        pj = context.scene.pj
+        try:
+            surface = viz.wall_from_object(pj.target_wall)
+        except ProjectionError as exc:
+            self.report({"ERROR"}, f"Could not rebuild the target wall: {exc}")
+            return {"CANCELLED"}
+        cursor = context.scene.cursor.location
+        hit = surface.project_point((cursor.x, cursor.y, cursor.z))
+        if hit is None:
+            self.report(
+                {"WARNING"},
+                "3D cursor does not project onto the target wall - move it over "
+                "the wall face",
+            )
+            return {"CANCELLED"}
+        readings = pj.calibration_readings
+        row = readings.add()
+        row.label = f"Reading {len(readings)}"
+        row.s = hit.s
+        row.z = hit.z
+        pj.calibration_index = len(readings) - 1
+        request_scene_sync(context.scene, SyncScope.ANALYSIS)
+        self.report(
+            {"INFO"},
+            f"Added '{row.label}' at s={hit.s:.2f} m, z={hit.z:.2f} m; enter the "
+            "measured lux",
+        )
+        return {"FINISHED"}
+
+
+class PJ_OT_remove_reading(Operator):
+    """Remove the highlighted lux reading"""
+
+    bl_idname = "projection.remove_reading"
+    bl_label = "Remove Reading"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        pj = context.scene.pj
+        if not 0 <= pj.calibration_index < len(pj.calibration_readings):
+            self.report({"WARNING"}, "No reading selected")
+            return {"CANCELLED"}
+        pj.calibration_readings.remove(pj.calibration_index)
+        pj.calibration_index = max(0, pj.calibration_index - 1)
+        request_scene_sync(context.scene, SyncScope.ANALYSIS)
+        return {"FINISHED"}
+
+
+class PJ_OT_clear_readings(Operator):
+    """Remove every lux reading"""
+
+    bl_idname = "projection.clear_readings"
+    bl_label = "Clear Readings"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        pj = context.scene.pj
+        pj.calibration_readings.clear()
+        pj.calibration_index = 0
+        request_scene_sync(context.scene, SyncScope.ANALYSIS)
+        return {"FINISHED"}
+
+
+# ---------------------------------------------------------------------------
 # Hardware spec library (increment #2)
 # ---------------------------------------------------------------------------
 
@@ -993,6 +1078,9 @@ _CLASSES = (
     PJ_OT_add_occluder,
     PJ_OT_remove_occluder,
     PJ_OT_clear_occluders,
+    PJ_OT_add_reading_cursor,
+    PJ_OT_remove_reading,
+    PJ_OT_clear_readings,
     PJ_OT_apply_preset_spec,
     PJ_OT_import_spec_csv,
     PJ_OT_export_analysis,

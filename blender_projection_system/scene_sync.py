@@ -16,7 +16,8 @@ import bpy
 
 from . import visualization as viz
 from .core.array import format_placement, plan_array
-from .core.coverage import analyze_coverage, format_report
+from .core.calibration import CalibrationReading, fit_calibration
+from .core.coverage import analyze_coverage, format_report, predict_illuminance_at
 from .core.errors import ProjectionError
 from .core.footprint import compute_footprint
 from .core.gain import GainModel, GainProfile
@@ -231,6 +232,44 @@ def sync_array(scene: bpy.types.Scene) -> ArraySyncResult:
     return ArraySyncResult(tuple(reconciled), tuple(lines), tuple(warnings))
 
 
+def _fit_scene_calibration(pj, wall, footprints, occlusion_caster):
+    """Fit the on-site correction from the scene's readings, degrading loudly.
+
+    Returns ``(fit, warnings)``: a ``None`` fit means the analysis runs
+    uncalibrated this round, with the reason surfaced as a warning (never
+    silently). The fit is recomputed on every analysis sync - nothing stored
+    can go stale (ADR 0005).
+    """
+    readings = [
+        CalibrationReading(
+            label=row.label or f"Reading {index + 1}",
+            s=row.s,
+            z=row.z,
+            measured_lux=row.measured_lux,
+        )
+        for index, row in enumerate(pj.calibration_readings)
+    ]
+    if not readings:
+        return None, ["calibration is enabled but no readings are recorded"]
+    usable = [fp for _obj, _spec, fp in footprints]
+    try:
+        pairs = []
+        for reading in readings:
+            predicted = predict_illuminance_at(
+                usable,
+                wall,
+                reading.s,
+                reading.z,
+                blend_model=BlendModel[pj.blend_model],
+                blend_gamma=pj.blend_gamma,
+                occlusion_caster=occlusion_caster,
+            )
+            pairs.append((reading, predicted))
+        return fit_calibration(pairs, ambient_lux=pj.ambient_lux), []
+    except ProjectionError as exc:
+        return None, [str(exc)]
+
+
 def _analysis_inputs(scene: bpy.types.Scene):
     wall_obj, wall = wall_for_scene(scene)
     projectors = projectors_in_scene(scene)
@@ -299,6 +338,18 @@ def _analysis_inputs(scene: bpy.types.Scene):
                 t = obj.matrix_world.translation
                 viewers.append((obj.name, (float(t.x), float(t.y), float(t.z))))
 
+    # Obstacles are always tested, even with the shadow overlay switched
+    # off: the numbers in the report must not depend on what is drawn. One
+    # caster serves both the calibration prediction path and the raster.
+    occlusion_caster = viz.build_occlusion_caster(scene)
+
+    calibration = None
+    if pj.enable_calibration:
+        calibration, calibration_warnings = _fit_scene_calibration(
+            pj, wall, footprints, occlusion_caster
+        )
+        warnings.extend(calibration_warnings)
+
     report = analyze_coverage(
         [footprint for _obj, _spec, footprint in footprints],
         wall,
@@ -306,9 +357,7 @@ def _analysis_inputs(scene: bpy.types.Scene):
         grid_z=pj.grid_z,
         screen_gain=pj.screen_gain,
         blend_model=BlendModel[pj.blend_model],
-        # Obstacles are always tested, even with the shadow overlay switched
-        # off: the numbers in the report must not depend on what is drawn.
-        occlusion_caster=viz.build_occlusion_caster(scene),
+        occlusion_caster=occlusion_caster,
         derate_chain=derate_chain,
         blend_gamma=pj.blend_gamma,
         ambient_lux=pj.ambient_lux,
@@ -319,6 +368,7 @@ def _analysis_inputs(scene: bpy.types.Scene):
         discas_element_height_pct=pj.discas_element_height_pct,
         discas_vertical_resolution=pj.discas_vertical_resolution,
         gain_profile=gain_profile,
+        calibration=calibration,
     )
     warnings.extend(report.warnings)
     if report.brightness is not None:

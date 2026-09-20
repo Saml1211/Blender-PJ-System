@@ -504,6 +504,43 @@ class PJ_PG_Occluder(PropertyGroup):
     )
 
 
+class PJ_PG_CalibrationReading(PropertyGroup):
+    """One on-site lux reading taken at a known wall position.
+
+    ``s``/``z`` use the same wall coordinates every report prints (arc
+    distance from the wall's left edge, height above its base). Editing any
+    numeric field re-converges the live analysis (ADR 0005).
+    """
+
+    label: StringProperty(name="Label", default="")
+    s: FloatProperty(
+        name="Arc Position s",
+        description="Distance along the wall arc from its left edge (m)",
+        default=0.0,
+        min=0.0,
+        precision=3,
+        unit="LENGTH",
+        update=_update_analysis,
+    )
+    z: FloatProperty(
+        name="Height z",
+        description="Height above the wall base (m)",
+        default=0.0,
+        min=0.0,
+        precision=3,
+        unit="LENGTH",
+        update=_update_analysis,
+    )
+    measured_lux: FloatProperty(
+        name="Measured Lux",
+        description="Illuminance read on site at this position (lux)",
+        default=0.0,
+        min=0.0,
+        precision=1,
+        update=_update_analysis,
+    )
+
+
 class PJ_PG_Scene(PropertyGroup):
     """Scene-level planning inputs and the last report."""
 
@@ -875,6 +912,25 @@ class PJ_PG_Scene(PropertyGroup):
         update=_update_analysis,
     )
 
+    # -- on-site calibration (measured vs predicted) -------------------------
+    enable_calibration: BoolProperty(
+        name="On-Site Calibration",
+        description=(
+            "Fit a scalar correction from at least 3 on-site lux readings taken "
+            "at known wall positions, apply it to every prediction, and keep the "
+            "residual visible in the report. The photometry is never claimed "
+            "verified"
+        ),
+        default=False,
+        update=_update_analysis,
+    )
+    calibration_readings: CollectionProperty(
+        type=PJ_PG_CalibrationReading,
+        name="Lux Readings",
+        description="On-site lux readings at known wall positions (at least 3)",
+    )
+    calibration_index: IntProperty(name="Active Reading Index", default=0)
+
     # -- lens scratchpad ----------------------------------------------------
     calc_distance: FloatProperty(
         name="Distance",
@@ -914,6 +970,7 @@ _CLASSES = (
     PJ_PG_ReportLine,
     PJ_PG_Wall,
     PJ_PG_Occluder,
+    PJ_PG_CalibrationReading,
     PJ_PG_Projector,
     PJ_PG_Scene,
 )

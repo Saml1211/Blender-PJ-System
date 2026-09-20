@@ -294,6 +294,36 @@ class PJ_PT_analysis(_Base):
             c_col.label(text="Structure per ANSI/AVIXA V201.01:2021;", icon="INFO")
             c_col.label(text="this tool does not certify compliance.")
 
+        cal_box = box.box()
+        cal_box.prop(pj, "enable_calibration", text="On-Site Calibration (>=3 readings)")
+        if pj.enable_calibration:
+            cal_col = cal_box.column(align=True)
+            if len(pj.calibration_readings) > 0:
+                cal_col.template_list(
+                    "UI_UL_list",
+                    "PJ_UL_readings",
+                    pj,
+                    "calibration_readings",
+                    pj,
+                    "calibration_index",
+                    rows=min(len(pj.calibration_readings), 4),
+                )
+            else:
+                cal_col.label(text="No readings recorded yet", icon="INFO")
+            row = cal_col.row(align=True)
+            row.operator("projection.add_reading_cursor", text="Add at Cursor", icon="ADD")
+            row.operator("projection.remove_reading", text="Remove", icon="REMOVE")
+            row.operator("projection.clear_readings", text="Clear", icon="TRASH")
+            if 0 <= pj.calibration_index < len(pj.calibration_readings):
+                item = pj.calibration_readings[pj.calibration_index]
+                cal_col.prop(item, "label", text="Label")
+                row = cal_col.row(align=True)
+                row.prop(item, "s", text="Arc s")
+                row.prop(item, "z", text="Height")
+                cal_col.prop(item, "measured_lux", text="Measured (lux)")
+            cal_col.label(text="s = arc from wall left edge, z = height above base", icon="INFO")
+            cal_col.label(text="Report shows the fitted factor and residual.", icon="INFO")
+
         discas_box = box.box()
         discas_box.prop(pj, "enable_discas", text="DISCAS Viewer Audit (V202.01)")
         if pj.enable_discas:

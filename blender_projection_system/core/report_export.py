@@ -220,6 +220,41 @@ def report_to_dict(
             "disclaimer": GAIN_PROFILE_DISCLAIMER,
         }
 
+    if report.calibration is not None:
+        cal = report.calibration
+        data["calibration"] = {
+            "factor": round(cal.factor, 4),
+            "reading_count": cal.reading_count,
+            "ambient_lux": round(cal.ambient_lux, 2),
+            "mean_ratio": round(cal.mean_ratio, 4),
+            "ratio_std": round(cal.ratio_std, 4),
+            "ratio_cv": round(cal.ratio_cv, 4),
+            "min_ratio": round(cal.min_ratio, 4),
+            "max_ratio": round(cal.max_ratio, 4),
+            "worst_residual_pct": round(cal.worst_residual_pct, 4),
+            "samples": [
+                {
+                    "label": reading.label,
+                    "s_m": round(reading.s, 4),
+                    "z_m": round(reading.z, 4),
+                    "measured_lux": round(reading.measured_lux, 2),
+                    "predicted_lux": round(predicted, 2),
+                    "ratio": round(
+                        (reading.measured_lux / (predicted + cal.ambient_lux))
+                        if (predicted + cal.ambient_lux) > 0.0
+                        else 0.0,
+                        4,
+                    ),
+                }
+                for reading, predicted in cal.samples
+            ],
+            "excluded": [
+                {"label": reading.label, "reason": reason}
+                for reading, reason in cal.excluded
+            ],
+            "disclaimer": cal.disclaimer,
+        }
+
     if rigging_items:
         data["rigging_schedule"] = [asdict(item) for item in rigging_items]
 
@@ -334,6 +369,16 @@ def export_coverage_summary_to_csv(
         writer.writerow(["Gain", "Peak", f"{gp.peak_gain:.2f}", "ratio"])
         writer.writerow(["Gain", "Half-Gain Angle", f"{gp.half_gain_angle_deg:.1f}", "deg"])
         writer.writerow(["Gain", "Off-Axis Floor", f"{gp.off_axis_gain:.2f}", "ratio"])
+
+    if report.calibration is not None:
+        cal = report.calibration
+        writer.writerow(["Calibration", "Correction Factor", f"{cal.factor:.3f}", "ratio"])
+        writer.writerow(["Calibration", "Readings Used", str(cal.reading_count), "count"])
+        writer.writerow(["Calibration", "Mean Ratio", f"{cal.mean_ratio:.3f}", "ratio"])
+        writer.writerow(["Calibration", "Ratio CV", f"{cal.ratio_cv * 100:.1f}", "%"])
+        writer.writerow(
+            ["Calibration", "Worst Residual", f"{cal.worst_residual_pct * 100:.1f}", "%"]
+        )
 
     if report.contrast:
         c = report.contrast

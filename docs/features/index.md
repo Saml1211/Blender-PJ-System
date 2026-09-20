@@ -406,6 +406,37 @@ panel note. On-site gain verification is always required.
 
 ---
 
+---
+
+## Measured-vs-predicted calibration loop — `core/calibration.py`, `core/coverage.py`
+
+Closes the design→as-built loop — the shortlist's differentiator bet, and the honest
+application of ADR 0002: instead of promising accuracy, the tool learns the room and
+reports its own residual error.
+
+- **Readings:** ≥ 3 on-site lux readings (handheld meter) at known wall positions.
+  Positions are the wall `(s, z)` coordinates every report already prints — entered
+  numerically per row, or one-click projected from the 3D cursor onto the target wall
+  via the Surface ABC `project_point`.
+- **Fit:** scalar correction factor `Σ measured / Σ (predicted + ambient)` — the meter
+  reads the total, so ambient illuminance entered in the analysis participates in the
+  fit (and reduces to plain `measured / predicted` with zero ambient). The factor is
+  applied to every per-cell prediction; ambient does not scale, which keeps the
+  effective-contrast recomputation physically correct.
+- **Visible residual, everywhere:** the report shows per-reading measured-vs-model
+  lines, the ratio spread with σ and coefficient of variation, the worst relative
+  residual, and every excluded reading with its reason (zero prediction at an unlit or
+  occluded position, non-positive measurement). The same data rides the JSON and CSV
+  exports.
+- **Garbage-in is bounded, not laundered:** the ≥ 3-usable-readings floor is enforced
+  (fewer → loud "running uncalibrated" warning, analysis survives); dispersion is
+  always reported and never smoothed or outlier-rejected by invented thresholds; the
+  fit is recomputed live on every analysis sync so nothing stored goes stale.
+- Mandatory disclaimer: *"Scalar correction factor fitted from on-site lux readings;
+  … this is not calibration certification and does not verify the predictions."*
+
+---
+
 ## What is not here
 
 Phase synchronisation, thermal modelling, ambient-light AI, VR/AR, and CAD

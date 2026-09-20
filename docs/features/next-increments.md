@@ -1,6 +1,6 @@
 # Next feature increments — candidate shortlist (v0.5.0 → v0.6 planning)
 
-**Status:** Accepted & Landed (Increments #1, #2, #3a, #3b, #3c, #4 Phase 1, #5 completed in main)
+**Status:** Accepted & Landed (Increments #1, #2, #3a, #3b, #3c, #4 Phase 1, #5 completed in main; post-shortlist landings: §3 calibration loop in `7859425`, §4.10 gain profiles in `9e95929`)
 **Date:** 2026-09-16
 **Base:** `blender_projection_system` v0.5.0 at `2f98a72`
 **Method:** Four independent research lanes — (1) user value & workflows, (2) competitive/industry landscape, (3) technical feasibility vs. architecture, (4) physics/standards credibility — each producing 5+ distinct candidate increments, an internal comparison, and an explicit rejected-ideas list, then cross-compared here. Full source lists are in the appendix. Lane execution note: the first subagent wave failed on a provider quota (all four lanes); all lanes were re-run on a working model and one lane required a second relaunch to deliver its full report. Two research claims are flagged medium-confidence by their lanes and are marked inline.
@@ -106,9 +106,11 @@ Effort scale: **S** = single module + tests; **M** = 2–4 modules or a new Blen
 
 ## 3. Differentiator bets and fold-ins
 
-### Measured-vs-predicted calibration loop *(M — keep on the board, not this cycle)*
+### Measured-vs-predicted calibration loop *(M — Landed in `7859425`)*
 
 The user records a handful of on-site lux readings (from a $100 meter) against surface positions; core fits a scalar correction, applies it to the analysis, and keeps the residual visible in every report. No tool in the competitive survey closes the design→as-built loop. It weaponises the honest-claims ADR — instead of promising accuracy, the tool learns the room and reports its own residual error. **Why not now:** narrowest audience of the shortlist and the most UX-sensitive (marking measured positions). **Risk if built:** garbage readings in, garbage calibration out — require ≥3 readings, report dispersion, and never claim the photometry is "verified".
+
+**Landed note:** all three stated mitigations shipped as designed (≥3-usable-readings floor, dispersion always reported, no verified-language), with the fit recomputed live on every analysis sync. The UX line held: positions are numeric wall `(s, z)` plus a 3D-cursor projection operator (plan record: `docs/plans/2026-09-20-gitnexus-plan-calibration-loop.md`).
 
 ### Blend-ramp gamma exponent + blend design package *(S — fold into the photometry cycle after 3a)*
 

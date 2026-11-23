@@ -250,6 +250,46 @@
           "source_url": "https://www.christiedigital.com"
         }
       ]
+    },
+    {
+      "manufacturer": "Fujifilm",
+      "model": "FP-ZUH12000",
+      "lumens": 12000.0,
+      "aspect_w": 16,
+      "aspect_h": 10,
+      "native_contrast": 25000.0,
+      "weight_kg": 18.1,
+      "source_url": "https://asset.fujifilm.com/www/au/files/2026-07/3098e8bd6f593fded123b99abb0ed785/fpzuh12000-specsheet01_e.pdf",
+      "verified": true,
+      "lenses": [
+        {
+          "model": "FP-ZL034 0.34-0.41",
+          "throw_ratio_min": 0.34,
+          "throw_ratio_max": 0.41,
+          "max_lens_shift_v": 0.6,
+          "max_lens_shift_h": 0.3,
+          "transmission_factor": 1.0,
+          "source_url": "https://asset.fujifilm.com/www/au/files/2026-07/40d040b30fbe2452ebe2c5f292f19034/fpzl034-specsheet01_e.pdf"
+        },
+        {
+          "model": "FP-ZL050 0.50-0.65",
+          "throw_ratio_min": 0.5,
+          "throw_ratio_max": 0.65,
+          "max_lens_shift_v": 0.53,
+          "max_lens_shift_h": 0.15,
+          "transmission_factor": 1.0,
+          "source_url": "https://asset.fujifilm.com/www/au/files/2026-07/3098e8bd6f593fded123b99abb0ed785/fpzuh12000-specsheet01_e.pdf"
+        },
+        {
+          "model": "FP-ZL125 1.25-2.00",
+          "throw_ratio_min": 1.25,
+          "throw_ratio_max": 2.0,
+          "max_lens_shift_v": 0.54,
+          "max_lens_shift_h": 0.15,
+          "transmission_factor": 1.0,
+          "source_url": "https://asset.fujifilm.com/www/au/files/2026-07/3098e8bd6f593fded123b99abb0ed785/fpzuh12000-specsheet01_e.pdf"
+        }
+      ]
     }
   ]
 }

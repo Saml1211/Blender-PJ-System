@@ -531,7 +531,18 @@ def cancel_pending_syncs() -> None:
 
 
 def register() -> None:
-    """Migrate loaded generated walls and converge scenes after registration."""
+    """Migrate loaded generated walls and converge scenes after registration.
+
+    Blender restricts ``bpy.data`` while it enables add-ons from Preferences or
+    at startup, so the migration then waits for a one-shot timer.
+    """
+    if isinstance(bpy.data, bpy.types.BlendData):
+        _migrate_loaded_scenes()
+    else:
+        bpy.app.timers.register(_migrate_loaded_scenes, first_interval=0.0)
+
+
+def _migrate_loaded_scenes() -> None:
     for obj in bpy.data.objects:
         if obj.get("pj_generated_wall") and obj.get(OWNER_KEY) == OWNER_ID:
             try:
@@ -544,4 +555,6 @@ def register() -> None:
 
 
 def unregister() -> None:
+    if bpy.app.timers.is_registered(_migrate_loaded_scenes):
+        bpy.app.timers.unregister(_migrate_loaded_scenes)
     cancel_pending_syncs()

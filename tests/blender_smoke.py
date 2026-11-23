@@ -70,6 +70,17 @@ def main() -> None:
         pjs.unregister()
         pjs.register()
     check(hasattr(bpy.types.Scene, "pj"), "Scene.pj survives repeated cycles")
+    # Preferences and startup enable add-ons with bpy.data restricted.
+    from bpy_restrict_state import RestrictBlend
+
+    pjs.unregister()
+    try:
+        with RestrictBlend():
+            pjs.register()
+        check(hasattr(bpy.types.Scene, "pj"), "register succeeds while bpy.data is restricted")
+    except Exception as exc:
+        check(False, f"register succeeds while bpy.data is restricted ({exc})")
+        pjs.register()
     check(hasattr(bpy.types.Object, "pj_wall"), "Object.pj_wall registered")
     check(hasattr(bpy.types.Object, "pj_projector"), "Object.pj_projector registered")
 

@@ -109,7 +109,7 @@ def test_emitted_uv_forward_casts_back_to_the_wall_point(contained):
     for vertex in grid.vertices:
         assert vertex.valid and vertex.uv is not None
         u_img = vertex.uv[0] - 0.5
-        v_img = vertex.uv[1] - 0.5
+        v_img = 0.5 - vertex.uv[1]
         direction = pose.local_to_world_dir(ray_direction_local(u_img, v_img, spec))
         hit = wall.intersect_ray(pose.origin, direction)
         assert hit is not None
@@ -125,6 +125,19 @@ def test_corner_pin_matches_the_footprint_corners(contained):
     assert {c.uv for c in grid.corners} == {(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)}
     for corner, world in zip(grid.corners, footprint_corners_world(fp), strict=True):
         assert distance(corner.world, world) < 1e-9
+
+
+def test_uv_origin_is_the_image_top_left_with_v_down(contained):
+    """The emitted uv follows the documented convention: (0, 0) top-left, v down."""
+    wall, spec, pose, fp = contained
+    grid = build_warp_grid(fp, resolution=8)
+
+    top = max(grid.vertices, key=lambda vertex: vertex.z)
+    bottom = min(grid.vertices, key=lambda vertex: vertex.z)
+    assert top.uv[1] < 0.1
+    assert bottom.uv[1] > 0.9
+    highest_corner = max(grid.corners, key=lambda corner: corner.world[2])
+    assert highest_corner.uv[1] == 0.0
 
 
 def test_spilling_image_reports_an_incomplete_corner_pin(spilling):
@@ -161,7 +174,7 @@ def test_valid_vertices_round_trip_on_the_keystoned_wall(keystoned):
         if not vertex.valid:
             continue
         u_img = vertex.uv[0] - 0.5
-        v_img = vertex.uv[1] - 0.5
+        v_img = 0.5 - vertex.uv[1]
         direction = pose.local_to_world_dir(ray_direction_local(u_img, v_img, spec))
         hit = wall.intersect_ray(pose.origin, direction)
         assert hit is not None
@@ -184,7 +197,7 @@ def test_full_circle_seam_round_trips():
         if not vertex.valid:
             continue
         u_img = vertex.uv[0] - 0.5
-        v_img = vertex.uv[1] - 0.5
+        v_img = 0.5 - vertex.uv[1]
         direction = pose.local_to_world_dir(ray_direction_local(u_img, v_img, spec))
         hit = wall.intersect_ray(pose.origin, direction)
         assert hit is not None

@@ -119,9 +119,11 @@ def build_warp_grid(fp: Footprint, resolution: int = 16) -> WarpGrid:
                 # a float tolerance there, then clamp the emitted uv.
                 limit = 0.5 + 1e-9
                 if -limit <= u <= limit and -limit <= v <= limit:
+                    # Internal v runs -0.5 (bottom) to +0.5 (top); the export
+                    # convention is top-left origin with v increasing downward.
                     uv = (
                         min(max(u + 0.5, 0.0), 1.0),
-                        min(max(v + 0.5, 0.0), 1.0),
+                        min(max(0.5 - v, 0.0), 1.0),
                     )
                     valid = True
             vertices.append(
@@ -139,7 +141,7 @@ def build_warp_grid(fp: Footprint, resolution: int = 16) -> WarpGrid:
         corners.append(
             WarpCorner(
                 world=(float(point[0]), float(point[1]), float(point[2])),
-                uv=(cu + 0.5, cv + 0.5),
+                uv=(cu + 0.5, 0.5 - cv),
             )
         )
 

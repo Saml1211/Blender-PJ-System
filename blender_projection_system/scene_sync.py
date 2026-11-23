@@ -104,6 +104,7 @@ def scene_spec(scene: bpy.types.Scene) -> ProjectorSpec:
         lens_model=pj.lens_model,
         native_contrast=pj.native_contrast,
         lens_transmission=pj.lens_transmission,
+        weight_kg=pj.weight_kg,
         source_url=pj.source_url,
         verified=pj.verified,
     )

@@ -835,6 +835,7 @@ def main() -> None:
         "lens_model",
         "native_contrast",
         "lens_transmission",
+        "weight_kg",
         "source_url",
         "verified",
     ):
@@ -845,6 +846,7 @@ def main() -> None:
         "lens_model",
         "native_contrast",
         "lens_transmission",
+        "weight_kg",
         "source_url",
         "verified",
     ):
@@ -864,6 +866,7 @@ def main() -> None:
     check(approx(scene.pj.throw_ratio_max, 1.89), "lens maximum TR updated to 1.89")
     check(scene.pj.verified is True, "preset flags verified status")
     check(bool(scene.pj.source_url), "preset cites source URL")
+    check(approx(scene.pj.weight_kg, 26.0), "preset carries the library body weight")
 
     # Live sync converges with new spec
     check(live_sync.flush_scene_sync(scene), "preset application converges live")
@@ -945,6 +948,14 @@ def main() -> None:
         check(data["schema_version"] == 1, "exported JSON schema version is 1")
         check("wall" in data and "coverage" in data, "exported JSON has wall and coverage blocks")
         check(len(data.get("rigging_schedule", [])) == 3, "exported JSON has 3 rigging entries")
+        check(
+            scene.pj.weight_kg > 0.0
+            and all(
+                approx(item["weight_kg"], scene.pj.weight_kg)
+                for item in data.get("rigging_schedule", [])
+            ),
+            "rigging schedule carries the applied spec weight",
+        )
 
         csv_path = str(Path(tmp_dir) / "test_export.csv")
         res_csv = bpy.ops.projection.export_analysis(filepath=csv_path, export_format="CSV")

@@ -465,6 +465,7 @@ def apply_spec_to_object(obj: bpy.types.Object, spec, mode: str) -> None:
     p.lens_model = spec.lens_model
     p.native_contrast = spec.native_contrast
     p.lens_transmission = spec.lens_transmission
+    p.weight_kg = spec.weight_kg
     p.source_url = spec.source_url
     p.verified = spec.verified
     p.mount_mode = mode
@@ -491,6 +492,7 @@ def spec_from_object(obj: bpy.types.Object):
         lens_model=p.lens_model,
         native_contrast=p.native_contrast,
         lens_transmission=p.lens_transmission,
+        weight_kg=p.weight_kg,
         source_url=p.source_url,
         verified=p.verified,
         label=obj.name,

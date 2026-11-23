@@ -471,6 +471,12 @@ class PJ_PG_Projector(PropertyGroup):
         max=1.0,
         precision=3,
     )
+    weight_kg: FloatProperty(
+        name="Weight",
+        description="Projector body weight in kg from the spec library; rigging schedule only",
+        default=0.0,
+        min=0.0,
+    )
     source_url: StringProperty(name="Source URL", default="")
     verified: BoolProperty(
         name="Verified Spec",
@@ -636,6 +642,7 @@ class PJ_PG_Scene(PropertyGroup):
     lens_model: StringProperty(name="Lens", default="")
     native_contrast: FloatProperty(default=2000.0, min=1.0)
     lens_transmission: FloatProperty(default=1.0, min=0.01, max=1.0, precision=3)
+    weight_kg: FloatProperty(default=0.0, min=0.0)
     source_url: StringProperty(default="")
     verified: BoolProperty(default=False)
 

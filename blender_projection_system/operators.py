@@ -796,6 +796,7 @@ class PJ_OT_apply_preset_spec(Operator):
         pj.manufacturer = model.manufacturer
         pj.model = model.model
         pj.native_contrast = model.native_contrast
+        pj.weight_kg = model.weight_kg
         if lens is not None:
             pj.throw_ratio_min = lens.throw_ratio_min
             pj.throw_ratio_max = lens.throw_ratio_max

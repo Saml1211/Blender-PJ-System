@@ -39,6 +39,35 @@ class RiggingItem:
     lumens: float = 0.0
     weight_kg: float = 0.0
     corners_world: tuple[tuple[float, float, float], ...] = ()
+    res_x: int = 0
+    res_y: int = 0
+    pixel_pitch_mm: float = 0.0
+    """Mean pitch on the target: arc span over horizontal resolution."""
+    pixel_pitch_min_mm: float = 0.0
+    pixel_pitch_max_mm: float = 0.0
+    pixels_per_metre: float = 0.0
+
+
+#: Rigging-schedule pixel columns, appended after the existing ones.
+_PIXEL_HEADERS = (
+    "Res_X",
+    "Res_Y",
+    "Pixel_Pitch_mm",
+    "Pixel_Pitch_Min_mm",
+    "Pixel_Pitch_Max_mm",
+    "Px_per_m",
+)
+
+
+def _pixel_cells(r: RiggingItem) -> list[str]:
+    return [
+        str(r.res_x),
+        str(r.res_y),
+        f"{r.pixel_pitch_mm:.2f}",
+        f"{r.pixel_pitch_min_mm:.2f}",
+        f"{r.pixel_pitch_max_mm:.2f}",
+        f"{r.pixels_per_metre:.0f}",
+    ]
 
 
 def report_to_dict(
@@ -87,6 +116,18 @@ def report_to_dict(
                 }
                 for z in report.blend_zones
             ],
+            "canvas": (
+                {
+                    "projectors": report.canvas.projectors,
+                    "pixels_x": report.canvas.pixels_x,
+                    "pixels_y": report.canvas.pixels_y,
+                    "overlap_px_total": report.canvas.overlap_px_total,
+                    "width_mm": round(report.canvas.width * 1000.0),
+                    "pixels_per_mm": round(report.canvas.pixels_per_metre / 1000.0, 4),
+                }
+                if report.canvas is not None
+                else None
+            ),
             "projector_spans": [
                 {
                     "name": name,
@@ -295,6 +336,7 @@ def export_rigging_schedule_to_csv(rigging_items: Sequence[RiggingItem]) -> str:
         "Shift_H_pct",
         "Rated_Lumens",
         "Weight_kg",
+        *_PIXEL_HEADERS,
     ]
     writer.writerow(headers)
     for r in rigging_items:
@@ -317,6 +359,7 @@ def export_rigging_schedule_to_csv(rigging_items: Sequence[RiggingItem]) -> str:
                 f"{r.lens_shift_h_pct:+.1f}",
                 f"{r.lumens:.0f}",
                 f"{r.weight_kg:.1f}",
+                *_pixel_cells(r),
             ]
         )
     return buf.getvalue()
@@ -343,6 +386,12 @@ def export_coverage_summary_to_csv(
     )
     writer.writerow(["Coverage", "Overlap Fraction", f"{report.overlap_fraction * 100:.1f}", "%"])
     writer.writerow(["Coverage", "Max Overlap Count", str(report.max_overlap_count), "units"])
+    if report.canvas is not None:
+        c = report.canvas
+        writer.writerow(["Canvas", "Resolution", f"{c.pixels_x} x {c.pixels_y}", "px"])
+        writer.writerow(["Canvas", "Width", f"{c.width * 1000.0:.0f}", "mm"])
+        writer.writerow(["Canvas", "Density", f"{c.pixels_per_metre / 1000.0:.3f}", "px/mm"])
+        writer.writerow(["Canvas", "Blended Pixels", str(c.overlap_px_total), "px"])
 
     if report.brightness:
         b = report.brightness
@@ -436,6 +485,7 @@ def export_coverage_summary_to_csv(
             "Shift_H_pct",
             "Rated_Lumens",
             "Weight_kg",
+            *_PIXEL_HEADERS,
         ]
         writer.writerow(headers)
         for r in rigging_items:
@@ -458,6 +508,7 @@ def export_coverage_summary_to_csv(
                     f"{r.lens_shift_h_pct:+.1f}",
                     f"{r.lumens:.0f}",
                     f"{r.weight_kg:.1f}",
+                    *_pixel_cells(r),
                 ]
             )
 

@@ -73,6 +73,12 @@ def sample_report_and_rigging():
             lens_shift_v_pct=0.0,
             lens_shift_h_pct=0.0,
             lumens=6000.0,
+            res_x=1920,
+            res_y=1080,
+            pixel_pitch_mm=2.78,
+            pixel_pitch_min_mm=2.75,
+            pixel_pitch_max_mm=2.81,
+            pixels_per_metre=360.0,
             weight_kg=27.0,
             corners_world=((1.0, 2.0, 3.0), (4.0, 5.0, 6.0), (7.0, 8.0, 9.0), (1.0, 0.0, 1.0)),
         )
@@ -154,3 +160,17 @@ def test_export_coverage_summary_to_csv(sample_report_and_rigging):
     assert "ANSI_9Point,Light Output" in csv_str
     assert "--- RIGGING SCHEDULE ---" in csv_str
     assert "PJ_01,Panasonic,PT-REQ12" in csv_str
+
+
+def test_rigging_schedule_carries_pixel_columns_in_mm(sample_report_and_rigging):
+    report, rigging = sample_report_and_rigging
+    lines = export_rigging_schedule_to_csv(rigging).strip().splitlines()
+    row = dict(zip(lines[0].split(","), lines[1].split(","), strict=True))
+    assert row["Res_X"] == "1920"
+    assert row["Res_Y"] == "1080"
+    assert row["Pixel_Pitch_mm"] == "2.78"
+    assert row["Pixel_Pitch_Max_mm"] == "2.81"
+    assert row["Px_per_m"] == "360"
+    d = report_to_dict(report, rigging)
+    assert d["rigging_schedule"][0]["pixel_pitch_mm"] == 2.78
+    assert "canvas" in d["coverage"]

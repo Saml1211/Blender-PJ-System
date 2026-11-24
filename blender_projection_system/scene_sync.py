@@ -183,9 +183,32 @@ def _camera_for_placement(
     return bpy.data.objects.new(name, camera)
 
 
+def fill_library_resolution(scene: bpy.types.Scene) -> None:
+    """Give scene and projectors the library resolution where they hold none.
+
+    ``res_x == 0`` means "not stated". Scenes saved before the library carried
+    resolution, or projectors applied from such a scene, keep 0 and would print
+    "assumed from aspect" for a model whose datasheet resolution is now known.
+    Only a library row that states a resolution fills a 0; a value the user
+    typed is never replaced.
+    """
+    from .properties import session_library
+
+    library = session_library()
+    holders = [scene.pj] + [obj.pj_projector for obj in projectors_in_scene(scene)]
+    with suspend_requests():
+        for props in holders:
+            if props.res_x > 0 or not props.model:
+                continue
+            model = library.get_model(props.manufacturer, props.model)
+            if model is not None and model.resolution_stated:
+                props.res_x, props.res_y = model.native_resolution
+
+
 def sync_array(scene: bpy.types.Scene) -> ArraySyncResult:
     """Plan and reconcile the owned projector array without touching manual cameras."""
     wall_obj, wall = wall_for_scene(scene)
+    fill_library_resolution(scene)
     pj = scene.pj
     plan = plan_array(
         wall,
@@ -276,6 +299,7 @@ def _fit_scene_calibration(pj, wall, footprints, occlusion_caster):
 
 def _analysis_inputs(scene: bpy.types.Scene):
     wall_obj, wall = wall_for_scene(scene)
+    fill_library_resolution(scene)
     projectors = projectors_in_scene(scene)
     if not projectors:
         raise ProjectionError(

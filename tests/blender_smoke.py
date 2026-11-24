@@ -983,6 +983,21 @@ def main() -> None:
             all(o.pj_projector.calc_pixel_pitch > 0.0 for o in array_objs),
             "every projector has a mean pixel pitch on the target",
         )
+        legacy = array_objs[0].pj_projector
+        legacy.manufacturer, legacy.model = "Fujifilm", "FP-ZUH12000"
+        legacy.res_x = legacy.res_y = 0
+        bpy.ops.projection.analyze()
+        check(
+            (legacy.res_x, legacy.res_y) == (1920, 1200),
+            "refresh fills a projector's unset resolution from its library model",
+        )
+        check(
+            all(
+                0 < scene.pj.canvas_px_y <= o.pj_projector.res_y or o.pj_projector.res_x == 0
+                for o in array_objs
+            ),
+            "canvas rows never exceed the native raster",
+        )
 
         pj = scene.pj
         pj.calc_res_preset = "1920x1200"

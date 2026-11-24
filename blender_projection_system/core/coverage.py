@@ -48,6 +48,7 @@ from .photometry import (
     summarize_brightness,
     summarize_contrast,
 )
+from .pixels import Canvas, array_canvas, fmt_mm
 from .surfaces import Surface
 from .vectors import Vec3, distance, dot, normalize, sub
 
@@ -156,6 +157,8 @@ class CoverageReport:
     contrast: ContrastReport | None = None
     nine_point: NinePointReport | None = None
     discas: DiscasReport | None = None
+    canvas: Canvas | None = None
+    """Blended pixel canvas across the projectors on the wall (see pixels.array_canvas)."""
     blend_model: BlendModel = BlendModel.RAW
     blend_gamma: float = 1.0
     derate_chain: DerateChain | None = None
@@ -375,6 +378,7 @@ def analyze_coverage(
     report.projector_spans = [(fp.name, Interval(fp.s_min, fp.s_max)) for fp in usable]
     report.projector_occlusions = occlusion_by
     report.blend_zones = compute_blend_zones(usable, wall=wall, grid_s=grid_s, grid_z=grid_z)
+    report.canvas = array_canvas(usable, report.blend_zones)
 
     if lux_grid:
         report.brightness = summarize_brightness(
@@ -917,6 +921,13 @@ def format_report(report: CoverageReport) -> list[str]:
         )
     for gap in report.gaps:
         lines.append(f"  GAP: arc {gap.start:.2f} - {gap.end:.2f} m ({gap.length:.2f} m)")
+    if report.canvas is not None:
+        c = report.canvas
+        lines.append(
+            f"Blended canvas: {c.pixels_x} x {c.pixels_y} px from {c.projectors} projector(s) "
+            f"over {fmt_mm(c.width)} of arc ({c.pixels_per_metre / 1000.0:.3f} px/mm, "
+            f"{c.overlap_px_total} px blended)"
+        )
     occluded = [o for o in report.projector_occlusions.values() if o.occluded_cells > 0]
     if occluded:
         lines.append(f"Occlusion: {len(report.occluded_cells)} cell(s) shadowed by obstacles")

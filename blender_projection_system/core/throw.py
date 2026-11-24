@@ -74,6 +74,11 @@ class ProjectorSpec:
     weight_kg: float = 0.0
     source_url: str = ""
     verified: bool = False
+    #: Native panel resolution in pixels. ``0`` means "not stated": the
+    #: :attr:`resolution` property then falls back to
+    #: :func:`default_resolution` for the aspect ratio.
+    res_x: int = 0
+    res_y: int = 0
 
     def __post_init__(self) -> None:
         require_positive("throw_ratio", self.throw_ratio)
@@ -105,6 +110,15 @@ class ProjectorSpec:
             )
         if self.weight_kg < 0.0:
             raise ProjectionError(f"weight must not be negative, got {self.weight_kg}")
+        if self.res_x < 0 or self.res_y < 0:
+            raise ProjectionError("resolution must not be negative (0 means not stated)")
+
+    @property
+    def resolution(self) -> tuple[int, int]:
+        """Native ``(res_x, res_y)``, defaulted from the aspect when not stated."""
+        if self.res_x > 0 and self.res_y > 0:
+            return self.res_x, self.res_y
+        return default_resolution(self.aspect_w, self.aspect_h)
 
     @property
     def aspect(self) -> float:
@@ -159,6 +173,17 @@ def aspect_ratio(aspect_w: int, aspect_h: int) -> float:
             f"aspect ratio components must be positive, got {aspect_w}:{aspect_h}"
         )
     return aspect_w / aspect_h
+
+
+def default_resolution(aspect_w: int, aspect_h: int) -> tuple[int, int]:
+    """Planning resolution assumed when a spec states none.
+
+    1920 pixels wide, height from the aspect ratio: 16:10 gives 1920 x 1200,
+    16:9 gives 1920 x 1080, 4:3 gives 1920 x 1440. It is an assumption, not a
+    datasheet value; callers label it as such.
+    """
+    aspect = aspect_ratio(aspect_w, aspect_h)
+    return 1920, round(1920 / aspect)
 
 
 def image_width_from_distance(distance: float, throw_ratio: float) -> float:

@@ -15,6 +15,15 @@ Lens-shift convention matches :mod:`.throw`: shift limits are fractions of the
 *full* image dimension (``0.5`` puts the optical axis on the image edge).
 The bundled starter rows use conservative planning values for shift limits;
 override per lens via CSV import when the datasheet number is known.
+
+Resolution: ``res_x``/``res_y`` are the native panel pixels and
+``addressable_res_x``/``addressable_res_y`` an optional higher addressable
+(pixel-shift / "4K mode") raster. All four are optional in JSON and CSV so
+older libraries load unchanged; ``0`` means "not stated", and
+:attr:`ProjectorModel.native_resolution` then falls back to
+:func:`~.throw.default_resolution` (1920 wide, height from the aspect, so
+16:10 gives 1920 x 1200). :attr:`ProjectorModel.resolution_stated` lets the
+UI label that fallback as an assumption.
 """
 
 from __future__ import annotations
@@ -22,12 +31,13 @@ from __future__ import annotations
 import csv
 import json
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from io import StringIO
 from pathlib import Path
 from typing import Any
 
 from .errors import ProjectionError, require_finite, require_positive
+from .throw import default_resolution
 
 #: Schema version accepted by the JSON loader. Bump when fields change and
 #: keep the loader accepting exactly one version so old files fail loudly.
@@ -51,6 +61,14 @@ CSV_COLUMNS: tuple[str, ...] = (
     "transmission",
     "source_url",
     "verified",
+)
+
+#: Optional CSV columns; absent or empty means "not stated" (0).
+CSV_RESOLUTION_COLUMNS: tuple[str, ...] = (
+    "res_x",
+    "res_y",
+    "addressable_res_x",
+    "addressable_res_y",
 )
 
 _TRUTHY = {"true", "1", "yes", "on"}
@@ -113,6 +131,10 @@ class ProjectorModel:
     lenses: tuple[LensSpec, ...] = ()
     source_url: str = ""
     verified: bool = False
+    res_x: int = 0
+    res_y: int = 0
+    addressable_res_x: int = 0
+    addressable_res_y: int = 0
 
     def __post_init__(self) -> None:
         for name, value in (("manufacturer", self.manufacturer), ("model", self.model)):
@@ -129,6 +151,38 @@ class ProjectorModel:
             )
         if self.weight_kg < 0.0:
             raise ProjectionError(f"weight must not be negative, got {self.weight_kg}")
+        for name in CSV_RESOLUTION_COLUMNS:
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ProjectionError(
+                    f"projector '{self.model}': {name} must be a whole number >= 0, got {value!r}"
+                )
+        if (self.res_x > 0) != (self.res_y > 0):
+            raise ProjectionError(f"projector '{self.model}': give both res_x and res_y, or neither")
+        if (self.addressable_res_x > 0) != (self.addressable_res_y > 0):
+            raise ProjectionError(
+                f"projector '{self.model}': give both addressable_res_x and "
+                "addressable_res_y, or neither"
+            )
+
+    @property
+    def resolution_stated(self) -> bool:
+        """True when the native resolution came from the library row."""
+        return self.res_x > 0 and self.res_y > 0
+
+    @property
+    def native_resolution(self) -> tuple[int, int]:
+        """Stated native resolution, or the aspect default when not stated."""
+        if self.resolution_stated:
+            return self.res_x, self.res_y
+        return default_resolution(self.aspect_w, self.aspect_h)
+
+    @property
+    def addressable_resolution(self) -> tuple[int, int] | None:
+        """Pixel-shift / 4K-mode raster, or ``None`` when the model has none."""
+        if self.addressable_res_x > 0 and self.addressable_res_y > 0:
+            return self.addressable_res_x, self.addressable_res_y
+        return None
 
     @property
     def full_name(self) -> str:
@@ -231,6 +285,15 @@ def _parse_aspect(row_label: str, value: Any) -> int:
     return value
 
 
+def _parse_pixels(row_label: str, key: str, value: Any) -> int:
+    """Optional whole-pixel count; absent (``None``) reads as 0, not stated."""
+    if value is None:
+        return 0
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ProjectionError(f"{row_label}: '{key}' must be a whole number >= 0, got {value!r}")
+    return value
+
+
 def _parse_verified(value: Any, row_label: str) -> bool:
     if isinstance(value, bool):
         return value
@@ -288,6 +351,7 @@ def _model_from_mapping(entry: Any) -> ProjectorModel:
         lenses=tuple(_lens_from_mapping(lens_entry, label) for lens_entry in lenses_raw),
         source_url=entry.get("source_url", "") or "",
         verified=_parse_verified(entry.get("verified", False), label),
+        **{key: _parse_pixels(label, key, entry.get(key)) for key in CSV_RESOLUTION_COLUMNS},
     )
 
 
@@ -355,12 +419,23 @@ def _csv_number(row: dict[str, str], column: str, row_label: str, default: float
     return require_finite(column, value)
 
 
+def _csv_pixels(row: dict[str, str], column: str, row_label: str) -> int:
+    """Optional pixel-count column; missing or empty means 0 (not stated)."""
+    raw = (row.get(column) or "").strip()
+    if not raw:
+        return 0
+    if not raw.isdigit():
+        raise ProjectionError(f"{row_label}: '{column}' must be a whole number, got {raw!r}")
+    return int(raw)
+
+
 def load_library_from_csv(content_or_path: Any) -> SpecLibrary:
     """Build a :class:`SpecLibrary` from user CSV content or a file path.
 
     One row per lens; consecutive rows sharing manufacturer and model merge
     into one projector. Lens columns may be left empty for body-only rows.
-    See :data:`CSV_COLUMNS` for the required header.
+    See :data:`CSV_COLUMNS` for the required header; the optional
+    :data:`CSV_RESOLUTION_COLUMNS` are read from each projector's first row.
     """
     text = _resolve_text(content_or_path, "CSV")
     models: list[ProjectorModel] = []
@@ -398,18 +473,7 @@ def load_library_from_csv(content_or_path: Any) -> SpecLibrary:
         if key in index_of:
             existing = models[index_of[key]]
             if lens is not None:
-                models[index_of[key]] = ProjectorModel(
-                    manufacturer=existing.manufacturer,
-                    model=existing.model,
-                    lumens=existing.lumens,
-                    aspect_w=existing.aspect_w,
-                    aspect_h=existing.aspect_h,
-                    native_contrast=existing.native_contrast,
-                    weight_kg=existing.weight_kg,
-                    lenses=existing.lenses + (lens,),
-                    source_url=existing.source_url,
-                    verified=existing.verified,
-                )
+                models[index_of[key]] = replace(existing, lenses=existing.lenses + (lens,))
             continue
 
         model = ProjectorModel(
@@ -423,6 +487,7 @@ def load_library_from_csv(content_or_path: Any) -> SpecLibrary:
             lenses=(lens,) if lens is not None else (),
             source_url=(row.get("source_url") or "").strip(),
             verified=_parse_verified(verified_raw, row_label),
+            **{column: _csv_pixels(row, column, row_label) for column in CSV_RESOLUTION_COLUMNS},
         )
         index_of[key] = len(models)
         models.append(model)

@@ -341,3 +341,46 @@ def test_lens_and_model_dataclasses_standalone():
     assert model.lenses == ()
     with pytest.raises(ProjectionError):
         ProjectorModel(manufacturer="A", model="", lumens=1.0, aspect_w=16, aspect_h=9)
+
+
+# -- resolution ---------------------------------------------------------------------
+
+
+def test_fp_zuh12000_carries_its_datasheet_resolution():
+    """Fujifilm FP-ZUH12000_E spec sheet: 1920 x 1200 native, 3840 x 2400 in 4K mode."""
+    model = load_builtin_library().get_model("Fujifilm", "FP-ZUH12000")
+    assert model is not None
+    assert model.resolution_stated
+    assert model.native_resolution == (1920, 1200)
+    assert model.native_resolution[0] * model.native_resolution[1] == 2_304_000
+    assert model.addressable_resolution == (3840, 2400)
+
+
+def test_rows_without_resolution_fall_back_to_the_aspect_default():
+    library = load_library_from_json({"schema_version": 1, "models": [_minimal_model()]})
+    model = library.models[0]
+    assert not model.resolution_stated
+    assert model.native_resolution == (1920, 1080)
+    assert model.addressable_resolution is None
+
+
+def test_json_resolution_must_be_whole_and_paired():
+    with pytest.raises(ProjectionError, match="res_x"):
+        load_library_from_json(
+            {"schema_version": 1, "models": [_minimal_model(res_x=1920.5, res_y=1200)]}
+        )
+    with pytest.raises(ProjectionError, match="both res_x and res_y"):
+        load_library_from_json({"schema_version": 1, "models": [_minimal_model(res_x=1920)]})
+
+
+def test_csv_resolution_columns_are_optional():
+    assert load_library_from_csv(CSV_BODY).get_model("TestCo", "Tiny 1").res_x == 0
+    header, *rows = CSV_BODY.strip().split("\n")
+    body = "\n".join(
+        [header + ",res_x,res_y,addressable_res_x,addressable_res_y"]
+        + [row + ",1920,1080,3840,2160" for row in rows if row.startswith("TestCo")]
+    )
+    model = load_library_from_csv(body).get_model("TestCo", "Tiny 1")
+    assert model.native_resolution == (1920, 1080)
+    assert model.addressable_resolution == (3840, 2160)
+    assert len(model.lenses) == 2

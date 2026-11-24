@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "note": "Curated starter rows: lumens, aspect, contrast, weight and lens throw-ratio ranges transcribed from the cited manufacturer sources. Lens shift limits are conservative planning values in the add-on's convention (fraction of the FULL image dimension, 0.5 = axis on image edge); override them via CSV import when the specific lens datasheet is known. The verified flag means the row was transcribed from the cited source, not measured.",
+  "note": "Curated starter rows: lumens, aspect, contrast, weight and lens throw-ratio ranges transcribed from the cited manufacturer sources. Lens shift limits are conservative planning values in the add-on's convention (fraction of the FULL image dimension, 0.5 = axis on image edge); override them via CSV import when the specific lens datasheet is known. The verified flag means the row was transcribed from the cited source, not measured. res_x/res_y (native) and addressable_res_x/addressable_res_y (pixel-shift / 4K mode) are optional; a row without them plans at 1920 wide with the height from its aspect, labelled as assumed.",
   "models": [
     {
       "manufacturer": "Christie",
@@ -259,6 +259,10 @@
       "aspect_h": 10,
       "native_contrast": 25000.0,
       "weight_kg": 18.1,
+      "res_x": 1920,
+      "res_y": 1200,
+      "addressable_res_x": 3840,
+      "addressable_res_y": 2400,
       "source_url": "https://asset.fujifilm.com/www/au/files/2026-07/3098e8bd6f593fded123b99abb0ed785/fpzuh12000-specsheet01_e.pdf",
       "verified": true,
       "lenses": [

@@ -209,8 +209,8 @@ def compute_footprint(
         )
     if fp.max_distance > 0 and fp.min_distance / fp.max_distance < 0.75:
         fp.warnings.append(
-            f"{name}: throw distance varies from {fp.min_distance:.2f} m to "
-            f"{fp.max_distance:.2f} m across the image; depth of field and focus "
+            f"{name}: throw distance varies from {fp.min_distance * 1000:.0f} mm to "
+            f"{fp.max_distance * 1000:.0f} mm across the image; depth of field and focus "
             "uniformity will be tested"
         )
     return fp

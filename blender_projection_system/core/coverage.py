@@ -483,7 +483,7 @@ def predict_illuminance_at(
     if not 0.0 <= s <= wall.arc_length or not 0.0 <= z <= wall.height:
         raise ProjectionError(
             f"reading position (s={s:.3f}, z={z:.3f}) lies outside the wall "
-            f"(arc 0-{wall.arc_length:.3f} m, height 0-{wall.height:.3f} m)"
+            f"(arc 0-{wall.arc_length * 1000:.0f} mm, height 0-{wall.height * 1000:.0f} mm)"
         )
     point = wall.point_at(s, z)
     normal = wall.normal_at_s(s)
@@ -838,16 +838,16 @@ def _coverage_warnings(report: CoverageReport) -> list[str]:
         worst = max(report.gaps, key=lambda g: g.length)
         out.append(
             f"{len(report.gaps)} dark band(s) on '{report.wall_name}'; "
-            f"largest runs {worst.start:.2f} m to {worst.end:.2f} m along the arc "
-            f"({worst.length:.2f} m wide)"
+            f"largest runs {worst.start * 1000:.0f} mm to {worst.end * 1000:.0f} mm along the arc "
+            f"({worst.length * 1000:.0f} mm wide)"
         )
     unlit_below = report.covered_z_min
     unlit_above = report.wall_height - report.covered_z_max
     if report.covered_cells and unlit_below + unlit_above > 0.05:
         out.append(
-            f"image band covers {report.covered_z_min:.2f}-{report.covered_z_max:.2f} m "
-            f"of a {report.wall_height:.2f} m wall ({unlit_below:.2f} m unlit below, "
-            f"{unlit_above:.2f} m above). Expected for a fixed aspect ratio - use a "
+            f"image band covers {report.covered_z_min * 1000:.0f}-{report.covered_z_max * 1000:.0f} mm "
+            f"of a {report.wall_height * 1000:.0f} mm wall ({unlit_below * 1000:.0f} mm unlit below, "
+            f"{unlit_above * 1000:.0f} mm above). Expected for a fixed aspect ratio - use a "
             "taller stack or accept the letterbox."
         )
     if report.max_overlap_count > 2:
@@ -890,8 +890,8 @@ def _coverage_warnings(report: CoverageReport) -> list[str]:
             )
     if report.discas is not None and not report.discas.bdm_conforms:
         out.append(
-            f"DISCAS BDM failure: farthest viewer ({report.discas.farthest_distance:.1f} m) "
-            f"exceeds maximum legibility distance ({report.discas.bdm_max_distance:.1f} m)"
+            f"DISCAS BDM failure: farthest viewer ({report.discas.farthest_distance * 1000:.0f} mm) "
+            f"exceeds maximum legibility distance ({report.discas.bdm_max_distance * 1000:.0f} mm)"
         )
     return out
 
@@ -899,28 +899,28 @@ def _coverage_warnings(report: CoverageReport) -> list[str]:
 def format_report(report: CoverageReport) -> list[str]:
     """Flat list of display lines, used by the Blender panel and the CLI."""
     lines = [
-        f"Wall '{report.wall_name}': {report.wall_arc_length:.2f} m arc "
-        f"x {report.wall_height:.2f} m high ({report.wall_arc_length * report.wall_height:.1f} m2)",
+        f"Wall '{report.wall_name}': {report.wall_arc_length * 1000:.0f} mm arc "
+        f"x {report.wall_height * 1000:.0f} mm high ({report.wall_arc_length * report.wall_height:.1f} m2)",
         f"Coverage: {report.covered_fraction * 100:.1f}% of wall area "
         f"({report.covered_area:.1f} m2 lit, {report.gap_area:.1f} m2 dark)",
         f"Horizontal coverage: {report.horizontal_coverage * 100:.1f}% of the arc; "
-        f"lit band {report.covered_z_min:.2f}-{report.covered_z_max:.2f} m high",
+        f"lit band {report.covered_z_min * 1000:.0f}-{report.covered_z_max * 1000:.0f} mm high",
         f"Overlap: {report.overlap_fraction * 100:.1f}% of the wall, "
         f"max {report.max_overlap_count} projector(s) on one spot",
     ]
     for name, span in report.projector_spans:
         lines.append(
-            f"  {name}: arc {span.start:.2f} - {span.end:.2f} m ({span.length:.2f} m wide)"
+            f"  {name}: arc {span.start * 1000:.0f} - {span.end * 1000:.0f} mm ({span.length * 1000:.0f} mm wide)"
         )
     for zone in report.blend_zones:
         lines.append(
-            f"  blend {zone.left} | {zone.right}: {zone.width:.2f} m "
+            f"  blend {zone.left} | {zone.right}: {zone.width * 1000:.0f} mm "
             f"({zone.overlap_fraction_left * 100:.0f}% / "
             f"{zone.overlap_fraction_right * 100:.0f}% of image width) - "
             f"{zone.guidance}"
         )
     for gap in report.gaps:
-        lines.append(f"  GAP: arc {gap.start:.2f} - {gap.end:.2f} m ({gap.length:.2f} m)")
+        lines.append(f"  GAP: arc {gap.start * 1000:.0f} - {gap.end * 1000:.0f} mm ({gap.length * 1000:.0f} mm)")
     if report.canvas is not None:
         c = report.canvas
         lines.append(
@@ -1031,19 +1031,19 @@ def format_report(report: CoverageReport) -> list[str]:
         bdm_verdict = "PASS" if d.bdm_conforms else "FAIL"
         adm_verdict = "PASS" if d.adm_conforms else "FAIL"
         lines.append(
-            f"DISCAS Viewer Audit (image height {d.image_height:.2f} m): "
-            f"BDM {d.element_height_pct:.1f}% max {d.bdm_max_distance:.1f} m [{bdm_verdict}], "
-            f"ADM {d.vertical_resolution}p max {d.adm_max_distance:.1f} m [{adm_verdict}], "
-            f"min {d.min_distance:.1f} m"
+            f"DISCAS Viewer Audit (image height {d.image_height * 1000:.0f} mm): "
+            f"BDM {d.element_height_pct:.1f}% max {d.bdm_max_distance * 1000:.0f} mm [{bdm_verdict}], "
+            f"ADM {d.vertical_resolution}p max {d.adm_max_distance * 1000:.0f} mm [{adm_verdict}], "
+            f"min {d.min_distance * 1000:.0f} mm"
         )
         if d.viewers:
             lines.append(
-                f"  Audited {len(d.viewers)} viewer(s): farthest {d.farthest_distance:.1f} m, "
+                f"  Audited {len(d.viewers)} viewer(s): farthest {d.farthest_distance * 1000:.0f} mm, "
                 f"worst off-axis {d.worst_off_axis_deg:.1f} deg"
             )
             for v in d.viewers:
                 lines.append(
-                    f"    viewer '{v.name}': dist {v.distance:.2f} m, angle {v.off_axis_deg:.1f} deg, "
+                    f"    viewer '{v.name}': dist {v.distance * 1000:.0f} mm, angle {v.off_axis_deg:.1f} deg, "
                     f"perceived {v.perceived_nits:.0f} nits (BDM {'OK' if v.bdm_pass else 'FAIL'}, "
                     f"ADM {'OK' if v.adm_pass else 'FAIL'})"
                 )

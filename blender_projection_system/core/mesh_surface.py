@@ -398,8 +398,8 @@ class MeshSurface(Surface):
                     if other is not None and abs(here - other) > limit:
                         raise ProjectionError(
                             "mesh folds back on itself near "
-                            f"s≈{(i_s + 0.5) * span_s / cols:.2f} m, "
-                            f"z≈{(iz + 0.5) * span_z / rows:.2f} m — "
+                            f"s≈{(i_s + 0.5) * span_s / cols * 1000:.0f} mm, "
+                            f"z≈{(iz + 0.5) * span_z / rows * 1000:.0f} mm — "
                             "not usable as a frontal projection target"
                         )
                 if iz + 1 < rows:
@@ -407,8 +407,8 @@ class MeshSurface(Surface):
                     if other is not None and abs(here - other) > limit:
                         raise ProjectionError(
                             "mesh folds back on itself near "
-                            f"s≈{(i_s + 0.5) * span_s / cols:.2f} m, "
-                            f"z≈{(iz + 1.5) * span_z / rows:.2f} m — "
+                            f"s≈{(i_s + 0.5) * span_s / cols * 1000:.0f} mm, "
+                            f"z≈{(iz + 1.5) * span_z / rows * 1000:.0f} mm — "
                             "not usable as a frontal projection target"
                         )
 

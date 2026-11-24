@@ -149,8 +149,8 @@ def _build_pose_and_spec(
     elif mode == MODE_TILT:
         if axis_distance <= abs(drop) + 1e-6:
             raise ProjectionError(
-                f"throw distance {axis_distance:.3f} m is shorter than the "
-                f"{abs(drop):.3f} m vertical drop from the mount to the image centre; "
+                f"throw distance {axis_distance * 1000:.0f} mm is shorter than the "
+                f"{abs(drop) * 1000:.0f} mm vertical drop from the mount to the image centre; "
                 "the projector cannot physically reach that image size from this height"
             )
         horizontal = math.sqrt(axis_distance * axis_distance - drop * drop)
@@ -227,9 +227,9 @@ def solve_standoff(
     _err, distance, pose, spec, measured = best
     if _err > SOLVE_TOLERANCE:
         raise ProjectionError(
-            f"could not solve a {target_arc_width:.3f} m image width on "
-            f"'{wall.name}' within {SOLVE_TOLERANCE:.3f} m; closest was "
-            f"{measured:.3f} m"
+            f"could not solve a {target_arc_width * 1000:.0f} mm image width on "
+            f"'{wall.name}' within {SOLVE_TOLERANCE * 1000:.0f} mm; closest was "
+            f"{measured * 1000:.0f} mm"
         )
     return distance, pose, spec, measured
 
@@ -253,14 +253,14 @@ def plan_projector(
     require_finite("image centre height", target_z)
     if not 0.0 <= target_z <= wall.height:
         raise ProjectionError(
-            f"image centre height must be between 0.00 and {wall.height:.2f} m "
-            f"above the wall base, got {target_z:.2f} m"
+            f"image centre height must be between 0 and {wall.height * 1000:.0f} mm "
+            f"above the wall base, got {target_z * 1000:.0f} mm"
         )
     require_finite("image centre arc position", arc_center)
     if not 0.0 <= arc_center <= wall.arc_length:
         raise ProjectionError(
             f"image centre arc position must be between 0.00 and "
-            f"{wall.arc_length:.2f} m, got {arc_center:.2f} m"
+            f"{wall.arc_length * 1000:.0f} mm, got {arc_center * 1000:.0f} mm"
         )
 
     distance, pose, spec, achieved_width = solve_standoff(
@@ -286,9 +286,9 @@ def plan_projector(
     # the oversized solve wall, so wall clipping does not mask the error.
     if abs(achieved_width - target_arc_width) / target_arc_width > 0.5:
         raise ProjectionError(
-            f"cannot produce a {target_arc_width:.2f} m wide image on '{wall.name}' with a "
-            f"{base_spec.throw_ratio:.2f}:1 lens mounted at {mount_height:.2f} m in {mode} "
-            f"mode: the closest achievable is {achieved_width:.2f} m. Lower the mount, "
+            f"cannot produce a {target_arc_width * 1000:.0f} mm wide image on '{wall.name}' with a "
+            f"{base_spec.throw_ratio:.2f}:1 lens mounted at {mount_height * 1000:.0f} mm in {mode} "
+            f"mode: the closest achievable is {achieved_width * 1000:.0f} mm. Lower the mount, "
             "change the lens, or use more projectors."
         )
 
@@ -339,21 +339,21 @@ def _placement_warnings(
         and placement.horizontal_standoff >= curvature_radius
     ):
         out.append(
-            f"{placement.name}: the lens sits {placement.horizontal_standoff:.2f} m from the "
-            f"wall but its radius of curvature is only {curvature_radius:.2f} m, so the projector "
+            f"{placement.name}: the lens sits {placement.horizontal_standoff * 1000:.0f} mm from the "
+            f"wall but its radius of curvature is only {curvature_radius * 1000:.0f} mm, so the projector "
             "would pass through the centre of curvature. Use a shorter lens (lower throw ratio)."
         )
     if placement.position[2] <= wall.base_center[2]:
         out.append(
-            f"{placement.name}: computed mount height {placement.position[2]:.2f} m is at or "
+            f"{placement.name}: computed mount height {placement.position[2] * 1000:.0f} mm is at or "
             "below the base of the wall"
         )
     if target_arc_width > 0:
         err = abs(placement.arc_span - target_arc_width) / target_arc_width
         if err > 0.05 and placement.footprint and placement.footprint.fully_on_surface:
             out.append(
-                f"{placement.name}: achieved {placement.arc_span:.2f} m of arc against a "
-                f"{target_arc_width:.2f} m target ({err * 100:.0f}% off); the geometry may be "
+                f"{placement.name}: achieved {placement.arc_span * 1000:.0f} mm of arc against a "
+                f"{target_arc_width * 1000:.0f} mm target ({err * 100:.0f}% off); the geometry may be "
                 "over-constrained"
             )
     if not spec.throw_ratio_within_lens():
@@ -419,12 +419,12 @@ def format_placement(placement: ProjectorPlacement) -> list[str]:
     p = placement
     lines = [
         f"{p.name} [{p.mode}]",
-        f"  mount: x={p.position[0]:.3f} y={p.position[1]:.3f} z={p.position[2]:.3f} m",
-        f"  standoff from wall: {p.horizontal_standoff:.3f} m, "
-        f"image centre {abs(p.drop_below_mount):.3f} m below mount",
-        f"  throw distance: {p.throw_distance:.3f} m "
-        f"(TR {p.spec.throw_ratio:.2f}), image {p.image_width:.3f} x {p.image_height:.3f} m",
-        f"  arc covered: {p.arc_span:.3f} m centred at {p.arc_center:.3f} m",
+        f"  mount: x={p.position[0] * 1000:+.0f} y={p.position[1] * 1000:+.0f} z={p.position[2] * 1000:.0f} mm",
+        f"  standoff from wall: {p.horizontal_standoff * 1000:.0f} mm, "
+        f"image centre {abs(p.drop_below_mount) * 1000:.0f} mm below mount",
+        f"  throw distance: {p.throw_distance * 1000:.0f} mm "
+        f"(TR {p.spec.throw_ratio:.2f}), image {p.image_width * 1000:.0f} x {p.image_height * 1000:.0f} mm",
+        f"  arc covered: {p.arc_span * 1000:.0f} mm centred at {p.arc_center * 1000:.0f} mm",
     ]
     if p.mode == MODE_LEVEL:
         lines.append(f"  vertical lens shift: {p.spec.lens_shift_v * 100:+.1f}% of image height")
@@ -433,6 +433,6 @@ def format_placement(placement: ProjectorPlacement) -> list[str]:
     if p.footprint:
         lines.append(
             f"  incidence worst case: {math.degrees(p.footprint.max_incidence):.1f} deg, "
-            f"throw spread {p.footprint.min_distance:.2f}-{p.footprint.max_distance:.2f} m"
+            f"throw spread {p.footprint.min_distance * 1000:.0f}-{p.footprint.max_distance * 1000:.0f} mm"
         )
     return lines

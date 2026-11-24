@@ -327,7 +327,7 @@ def test_a_long_lens_that_would_overshoot_the_axis_is_flagged(wall):
 def test_tilt_mode_rejects_an_unreachable_small_image_from_a_high_mount(wall):
     """A very long lens from a very high mount cannot reach a small image."""
     tele = ProjectorSpec(throw_ratio=1.2)
-    with pytest.raises(ProjectionError, match="could not solve a 0.050 m image width"):
+    with pytest.raises(ProjectionError, match="could not solve a 50 mm image width"):
         plan_projector(wall, tele, wall.arc_length / 2, 0.05, mount_height=40.0,
                        image_center_height=1.5, mode=MODE_TILT)
 

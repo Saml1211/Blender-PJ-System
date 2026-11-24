@@ -121,10 +121,11 @@ because they are consequences of the geometry, not inputs.
 
 It also shows the projector's native resolution (from the library row, or
 "assumed from aspect" when the row states none), the image size on the target
-in mm, and the pixel pitch on the target: the mean (arc covered divided by the
-horizontal resolution, in mm/px and px/m) and the local minimum and maximum
-measured between neighbouring footprint samples, so keystone and curvature
-show up as a spread.
+in mm, and the pixel pitch on the target from a per-pixel cast of one image
+row: the mean (arc covered by the on-target columns over their count, in mm/px
+and px/m) and the narrowest and widest single pixel, so keystone and curvature
+show up as a spread. A projector whose resolution is unset takes it from its
+library model on the next refresh.
 
 ---
 
@@ -143,10 +144,13 @@ immediately.
 | **Screen Gain** | Gain of the wall finish. 1.0 is matte white |
 | **Draw Frustums** | Include the lens-to-corner wireframes |
 
-**Blended Canvas on Target** appears once a report exists: the total pixel
-raster across every projector on the wall, the canvas width in mm and the
-pixel density. Each blend zone removes its measured overlap, as a fraction of
-each neighbour's arc span, from the summed horizontal resolutions. The same
+**Blended Canvas on Target** appears once a report exists, counted in real
+pixels cast onto the wall. Width in pixels is the image columns that land on
+the target, less each blend: the mean of the two neighbours' columns inside
+their shared stretch of arc. Height in pixels is the fewest image rows that land
+on the target along any projector's centre column, so spill onto the floor or
+ceiling is not counted. The canvas width in mm is the lit arc and never exceeds
+the wall. The same
 numbers go into the report text, the JSON/CSV export, and new `Res_X`,
 `Res_Y`, `Pixel_Pitch_mm`, `Pixel_Pitch_Min_mm`, `Pixel_Pitch_Max_mm` and
 `Px_per_m` columns at the end of the rigging schedule.

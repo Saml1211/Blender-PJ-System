@@ -964,6 +964,56 @@ def main() -> None:
         csv_content = Path(csv_path).read_text(encoding="utf-8")
         check("Wall,Name" in csv_content, "exported CSV has summary metrics")
         check("--- RIGGING SCHEDULE ---" in csv_content, "exported CSV has rigging table")
+        check("Pixel_Pitch_mm" in csv_content, "exported CSV rigging table has pixel pitch")
+
+        # -- 4g-px. pixel readouts and the Image & Pixel Calculator ---------
+        print("\n[4g-px] pixel readouts and scenario calculator")
+        rig = data.get("rigging_schedule", [])
+        check(
+            bool(rig) and all(i["res_x"] > 0 and i["pixel_pitch_mm"] > 0.0 for i in rig),
+            "rigging schedule carries resolution and pixel pitch",
+        )
+        canvas = data["coverage"].get("canvas") or {}
+        check(
+            canvas.get("pixels_x", 0) > 0 and canvas["pixels_x"] == scene.pj.canvas_px_x,
+            "blended canvas exported and written to the scene",
+        )
+        array_objs = [o for o in scene.objects if o.pj_projector.is_projector]
+        check(
+            all(o.pj_projector.calc_pixel_pitch > 0.0 for o in array_objs),
+            "every projector has a mean pixel pitch on the target",
+        )
+
+        pj = scene.pj
+        pj.calc_res_preset = "1920x1200"
+        pj.calc_distance = 3.297
+        pj.calc_throw_ratio = 0.36
+        check(approx(pj.calc_width, 9.1583), "distance + ratio drive the width")
+        check(approx(pj.calc_height, 9.1583 / 1.6), "height follows the 16:10 signal")
+        pj.calc_height = 5.0
+        check(approx(pj.calc_width, 8.0), "editing the height drives the width")
+        check(approx(pj.calc_throw_ratio, 3.297 / 8.0), "and the throw ratio")
+        pj.calc_res_preset = "3840x2160"
+        check(approx(pj.calc_height, 4.5), "a 16:9 preset re-derives the height")
+        pj.calc_projector_count = 2
+        pj.calc_overlap = 0.15
+        pj.scenario_name = "UHD pair"
+        check(bpy.ops.projection.save_scenario() == {"FINISHED"}, "save_scenario finished")
+        check(len(pj.scenarios) == 1 and pj.scenarios[0].res_x == 3840, "scenario stored")
+        pj.calc_res_preset = "1920x1080"
+        check(bpy.ops.projection.load_scenario() == {"FINISHED"}, "load_scenario finished")
+        check(
+            pj.calc_res_preset == "CUSTOM" and pj.calc_res_x == 3840 and approx(pj.calc_width, 8.0),
+            "load_scenario restores resolution and width",
+        )
+        scen_path = str(Path(tmp_dir) / "scenarios.csv")
+        check(
+            bpy.ops.projection.export_scenarios(filepath=scen_path) == {"FINISHED"},
+            "export_scenarios finished",
+        )
+        scen_csv = Path(scen_path).read_text(encoding="utf-8")
+        check("UHD pair" in scen_csv and "7104 x 2160" in scen_csv, "scenario CSV has the canvas")
+        check(bpy.ops.projection.remove_scenario() == {"FINISHED"}, "remove_scenario finished")
 
     # -- 4h. DISCAS viewer audit (increment #5) ---------------------------
     print("\n[4h] DISCAS viewer audit")

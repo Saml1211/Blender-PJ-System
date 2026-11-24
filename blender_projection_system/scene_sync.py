@@ -22,6 +22,7 @@ from .core.errors import ProjectionError
 from .core.footprint import compute_footprint
 from .core.gain import GainModel, GainProfile
 from .core.photometry import BlendModel, DerateChain, ISCRCategory, brightness_warnings
+from .core.pixels import fmt_pitch, surface_pitch
 from .core.pose import Pose
 from .core.throw import ProjectorSpec, describe_throw, image_size
 from .scene_ids import OBJECT_ROLE_KEY, OWNER_ID, OWNER_KEY
@@ -107,6 +108,8 @@ def scene_spec(scene: bpy.types.Scene) -> ProjectorSpec:
         weight_kg=pj.weight_kg,
         source_url=pj.source_url,
         verified=pj.verified,
+        res_x=pj.res_x,
+        res_y=pj.res_y,
     )
 
 
@@ -221,10 +224,10 @@ def sync_array(scene: bpy.types.Scene) -> ArraySyncResult:
         warnings.extend(placement.warnings)
     lines = [
         f"Planned {len(reconciled)} projector(s) on '{wall_obj.name}'",
-        f"Target image width per projector: {plan.target_arc_width:.2f} m of arc "
+        f"Target image width per projector: {plan.target_arc_width * 1000:.0f} mm of arc "
         f"at {pj.overlap * 100:.0f}% overlap",
-        f"Mount height {pj.mount_height:.2f} m, image centre "
-        f"{pj.image_center_height:.2f} m above wall base, mode {pj.mount_mode}",
+        f"Mount height {pj.mount_height * 1000:.0f} mm, image centre "
+        f"{pj.image_center_height * 1000:.0f} mm above wall base, mode {pj.mount_mode}",
     ]
     for placement in plan.placements:
         lines.extend(format_placement(placement))
@@ -389,12 +392,24 @@ def sync_analysis(scene: bpy.types.Scene, *, visualize: bool = True) -> Analysis
         location = obj.matrix_world.translation
         size = image_size(max(footprint.center_distance, 1e-3), spec)
         lines.append(
-            f"  {obj.name}: mount x={location.x:+.2f} y={location.y:+.2f} "
-            f"z={location.z:.2f} m; throw {footprint.center_distance:.2f} m; "
-            f"image {size.width:.2f} x {size.height:.2f} m; "
+            f"  {obj.name}: mount x={location.x * 1000:+.0f} y={location.y * 1000:+.0f} "
+            f"z={location.z * 1000:.0f} mm; throw {footprint.center_distance * 1000:.0f} mm; "
+            f"image {size.width * 1000:.0f} x {size.height * 1000:.0f} mm; "
             f"shift V={props.lens_shift_v * 100:+.1f}% "
             f"H={props.lens_shift_h * 100:+.1f}%"
         )
+    lines.append("Projector pixels on the target:")
+    for obj, spec, footprint in sorted(footprints, key=lambda item: item[0].name):
+        res_x, res_y = spec.resolution
+        assumed = "" if spec.res_x > 0 else " (assumed from aspect)"
+        pitch = surface_pitch(footprint)
+        detail = (
+            f"pitch {fmt_pitch(pitch.mean)} mean, {fmt_pitch(pitch.minimum)} to "
+            f"{fmt_pitch(pitch.maximum)} local, {1.0 / pitch.mean:.0f} px/m"
+            if pitch is not None
+            else "image not on the target"
+        )
+        lines.append(f"  {obj.name}: {res_x} x {res_y} px{assumed}; {detail}")
     if report.brightness is not None:
         lines.append("Brightness assumptions: " + "; ".join(report.brightness.assumptions))
 
@@ -410,6 +425,12 @@ def sync_analysis(scene: bpy.types.Scene, *, visualize: bool = True) -> Analysis
             else:
                 props.calc_occluded_cells = occlusion.occluded_cells
                 props.calc_occluded_ratio = occlusion.occluded_fraction
+        canvas = report.canvas
+        pj.canvas_projectors = canvas.projectors if canvas else 0
+        pj.canvas_px_x = canvas.pixels_x if canvas else 0
+        pj.canvas_px_y = canvas.pixels_y if canvas else 0
+        pj.canvas_overlap_px = canvas.overlap_px_total if canvas else 0
+        pj.canvas_width = canvas.width if canvas else 0.0
         set_report(scene, lines, warnings)
         if visualize:
             viz.clear_collection(scene, viz.COLLECTION_ANALYSIS)

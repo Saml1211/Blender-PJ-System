@@ -468,6 +468,8 @@ def apply_spec_to_object(obj: bpy.types.Object, spec, mode: str) -> None:
     p.weight_kg = spec.weight_kg
     p.source_url = spec.source_url
     p.verified = spec.verified
+    p.res_x = spec.res_x
+    p.res_y = spec.res_y
     p.mount_mode = mode
 
 
@@ -495,6 +497,8 @@ def spec_from_object(obj: bpy.types.Object):
         weight_kg=p.weight_kg,
         source_url=p.source_url,
         verified=p.verified,
+        res_x=p.res_x,
+        res_y=p.res_y,
         label=obj.name,
     )
 
@@ -522,7 +526,13 @@ def store_footprint_results(obj: bpy.types.Object, footprint: Footprint, gain: f
     p.calc_image_height = 0.0
     if footprint.hits():
         p.calc_mean_nits = footprint.brightness(gain).mean_nits
+    from .core.pixels import surface_pitch
     from .core.throw import image_size
+
+    pitch = surface_pitch(footprint)
+    p.calc_pixel_pitch = pitch.mean if pitch else 0.0
+    p.calc_pixel_pitch_min = pitch.minimum if pitch else 0.0
+    p.calc_pixel_pitch_max = pitch.maximum if pitch else 0.0
 
     if footprint.center_distance > 0.0:
         size = image_size(footprint.center_distance, footprint.spec)

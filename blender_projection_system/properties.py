@@ -71,32 +71,201 @@ MOUNT_MODE_ITEMS = [
 
 
 # ---------------------------------------------------------------------------
-# Lens scratchpad (the only genuinely bidirectional pair)
+# Image & Pixel Calculator scratchpad (the only genuinely bidirectional set)
 # ---------------------------------------------------------------------------
+
+#: Resolution presets for the calculator. NATIVE and ADDRESSABLE read the
+#: model selected in the hardware library pickers; the rest are fixed rasters.
+CALC_RES_ITEMS = [
+    ("NATIVE", "Native (selected model)", "Native panel resolution of the selected library model"),
+    (
+        "ADDRESSABLE",
+        "Pixel-shift / 4K (selected model)",
+        "Addressable pixel-shift or 4K-mode raster of the selected model, if it has one",
+    ),
+    ("1920x1080", "1920 x 1080", "HD 16:9"),
+    ("1920x1200", "1920 x 1200", "WUXGA 16:10"),
+    ("3840x2160", "3840 x 2160", "UHD 16:9"),
+    ("3840x2400", "3840 x 2400", "WQUXGA 16:10"),
+    ("4096x2160", "4096 x 2160", "DCI 4K"),
+    ("CUSTOM", "Custom", "Type the resolution"),
+]
+
+
+@contextlib.contextmanager
+def suspend_calculator_updates():
+    """Write several calculator fields without each one re-solving the rest."""
+    with _no_reentry():
+        yield
+
+
+def solve_calculator(pj, **given) -> None:
+    """Public form of :func:`_calc_solve` for operators, guarded like a callback."""
+    with _no_reentry() as outermost:
+        if outermost:
+            _calc_solve(pj, **given)
+
+
+def _calc_solve(self, **given) -> None:
+    """Solve the throw triangle in core and write every calculator field."""
+    from .core.errors import ProjectionError
+    from .core.pixels import solve_image
+
+    res_x, res_y, _label = calculator_resolution(self)
+    try:
+        image = solve_image(res_x / res_y, **given)
+    except ProjectionError:
+        return  # a transient zero while typing; keep the last valid set
+    self.calc_distance = image.distance
+    self.calc_throw_ratio = image.throw_ratio
+    self.calc_width = image.width
+    self.calc_height = image.height
+    self.calc_diagonal = image.diagonal
 
 
 def _update_calc_distance(self, context):
     with _no_reentry() as outermost:
-        if not outermost:
-            return
-        if self.calc_throw_ratio > 0.0:
-            self.calc_width = self.calc_distance / self.calc_throw_ratio
+        if outermost:
+            _calc_solve(self, distance=self.calc_distance, throw_ratio=self.calc_throw_ratio)
 
 
 def _update_calc_width(self, context):
     with _no_reentry() as outermost:
-        if not outermost:
-            return
-        if self.calc_width > 0.0:
-            self.calc_throw_ratio = self.calc_distance / self.calc_width
+        if outermost:
+            _calc_solve(self, distance=self.calc_distance, width=self.calc_width)
 
 
 def _update_calc_throw_ratio(self, context):
     with _no_reentry() as outermost:
-        if not outermost:
-            return
-        if self.calc_throw_ratio > 0.0:
-            self.calc_width = self.calc_distance / self.calc_throw_ratio
+        if outermost:
+            _calc_solve(self, distance=self.calc_distance, throw_ratio=self.calc_throw_ratio)
+
+
+def _update_calc_height(self, context):
+    with _no_reentry() as outermost:
+        if outermost:
+            _calc_solve(self, distance=self.calc_distance, height=self.calc_height)
+
+
+def _update_calc_diagonal(self, context):
+    with _no_reentry() as outermost:
+        if outermost:
+            _calc_solve(self, distance=self.calc_distance, diagonal=self.calc_diagonal)
+
+
+def _update_calc_resolution(self, context):
+    """A new signal aspect keeps the width and throw; height and diagonal follow."""
+    with _no_reentry() as outermost:
+        if outermost:
+            _calc_solve(self, distance=self.calc_distance, width=self.calc_width)
+
+
+def calculator_model(pj):
+    """The library model selected in the pickers, or ``None``."""
+    return session_library().get_model(pj.spec_manufacturer, pj.spec_model)
+
+
+def calculator_resolution(pj) -> tuple[int, int, str]:
+    """``(res_x, res_y, source label)`` for the calculator's preset."""
+    from .core.throw import default_resolution
+
+    preset = pj.calc_res_preset
+    if preset == "CUSTOM":
+        return pj.calc_res_x, pj.calc_res_y, "custom"
+    if preset not in {"NATIVE", "ADDRESSABLE"}:
+        x, y = preset.split("x")
+        return int(x), int(y), "preset"
+    model = calculator_model(pj)
+    if model is None:
+        x, y = default_resolution(pj.aspect_w, pj.aspect_h)
+        return x, y, f"assumed from {pj.aspect_w}:{pj.aspect_h}, no model selected"
+    if preset == "ADDRESSABLE" and model.addressable_resolution is not None:
+        x, y = model.addressable_resolution
+        return x, y, f"pixel-shift, {model.full_name}"
+    x, y = model.native_resolution
+    if not model.resolution_stated:
+        return x, y, f"assumed from {model.aspect_w}:{model.aspect_h}, not in library"
+    suffix = " (no pixel-shift mode listed)" if preset == "ADDRESSABLE" else ""
+    return x, y, f"native, {model.full_name}{suffix}"
+
+
+def calculator_lens(pj) -> tuple[float, float, float, float, str]:
+    """Lens limits for the calculator's range checks.
+
+    The lens selected in the pickers wins so a trial needs no Apply; with no
+    library lens the scene's applied limits are used.
+    """
+    model = calculator_model(pj)
+    lens = session_library().find_lens(model, pj.spec_lens) if model and model.lenses else None
+    if lens is not None:
+        return (
+            lens.throw_ratio_min,
+            lens.throw_ratio_max,
+            lens.max_lens_shift_v,
+            lens.max_lens_shift_h,
+            lens.model,
+        )
+    return (
+        pj.throw_ratio_min,
+        pj.throw_ratio_max,
+        pj.max_lens_shift_v,
+        pj.max_lens_shift_h,
+        pj.lens_model or "scene inputs",
+    )
+
+
+def calculator_inputs(pj):
+    """The calculator's current fields as a core :class:`ScenarioInputs`."""
+    from .core.pixels import ScenarioInputs
+
+    res_x, res_y, _label = calculator_resolution(pj)
+    tr_min, tr_max, max_v, max_h, _lens = calculator_lens(pj)
+    return ScenarioInputs(
+        distance=pj.calc_distance,
+        throw_ratio=pj.calc_throw_ratio,
+        res_x=res_x,
+        res_y=res_y,
+        lens_height=pj.calc_lens_height,
+        lens_shift_v=pj.calc_shift_v,
+        check_target=pj.calc_check_target,
+        target_bottom=pj.calc_target_bottom,
+        target_height=pj.calc_target_height,
+        viewing_distance=pj.calc_viewing_distance,
+        projector_count=pj.calc_projector_count,
+        overlap_fraction=pj.calc_overlap,
+        throw_ratio_min=tr_min,
+        throw_ratio_max=tr_max,
+        max_lens_shift_v=max_v,
+        max_lens_shift_h=max_h,
+    )
+
+
+#: ScenarioInputs fields stored on a saved scenario, by the same names.
+SCENARIO_FIELDS = (
+    "distance",
+    "throw_ratio",
+    "res_x",
+    "res_y",
+    "lens_height",
+    "lens_shift_v",
+    "check_target",
+    "target_bottom",
+    "target_height",
+    "viewing_distance",
+    "projector_count",
+    "overlap_fraction",
+    "throw_ratio_min",
+    "throw_ratio_max",
+    "max_lens_shift_v",
+    "max_lens_shift_h",
+)
+
+
+def scenario_inputs(item):
+    """A saved scenario back as core :class:`ScenarioInputs`."""
+    from .core.pixels import ScenarioInputs
+
+    return ScenarioInputs(**{name: getattr(item, name) for name in SCENARIO_FIELDS})
 
 
 def _is_wall_object(self, obj):
@@ -250,6 +419,34 @@ class PJ_PG_ReportLine(PropertyGroup):
         ],
         default="INFO",
     )
+
+
+class PJ_PG_Scenario(PropertyGroup):
+    """One saved Image & Pixel Calculator trial.
+
+    Stores the inputs, resolved to numbers at save time (preset resolution and
+    lens limits included). Outputs are recomputed from them by
+    :func:`~.core.pixels.evaluate_scenario`, so the compare table, the CSV and
+    the live calculator can never disagree.
+    """
+
+    name: StringProperty(name="Name", default="Scenario")
+    distance: FloatProperty(name="Throw Distance", default=6.0, min=0.01, unit="LENGTH")
+    throw_ratio: FloatProperty(name="Throw Ratio", default=1.2, min=0.01, precision=3)
+    res_x: IntProperty(name="Res X", default=1920, min=1)
+    res_y: IntProperty(name="Res Y", default=1080, min=1)
+    lens_height: FloatProperty(name="Lens Height AFF", default=0.0, unit="LENGTH")
+    lens_shift_v: FloatProperty(name="Vertical Shift", default=0.0, precision=3)
+    check_target: BoolProperty(name="Check Screen", default=False)
+    target_bottom: FloatProperty(name="Screen Bottom AFF", default=0.0, unit="LENGTH")
+    target_height: FloatProperty(name="Screen Height", default=0.0, unit="LENGTH")
+    viewing_distance: FloatProperty(name="Viewer Distance", default=0.0, unit="LENGTH")
+    projector_count: IntProperty(name="Projectors", default=1, min=1)
+    overlap_fraction: FloatProperty(name="Overlap", default=0.0, min=0.0, max=0.6)
+    throw_ratio_min: FloatProperty(name="Lens Min TR", default=0.0, min=0.0)
+    throw_ratio_max: FloatProperty(name="Lens Max TR", default=0.0, min=0.0)
+    max_lens_shift_v: FloatProperty(name="Max Vertical Shift", default=0.0, min=0.0)
+    max_lens_shift_h: FloatProperty(name="Max Horizontal Shift", default=0.0, min=0.0)
 
 
 class PJ_PG_Wall(PropertyGroup):
@@ -450,6 +647,22 @@ class PJ_PG_Projector(PropertyGroup):
         default=MODE_LEVEL,
         update=_update_projector,
     )
+    res_x: IntProperty(
+        name="Resolution X",
+        description="Native horizontal pixels (0 = assume 1920 wide, height from the aspect)",
+        default=0,
+        min=0,
+        max=16384,
+        update=_update_projector,
+    )
+    res_y: IntProperty(
+        name="Resolution Y",
+        description="Native vertical pixels (0 = assume from the aspect)",
+        default=0,
+        min=0,
+        max=16384,
+        update=_update_projector,
+    )
 
     # -- provenance metadata from the spec library (core/specs.py) ---------
     # Written by apply_spec_to_object; describes the *stated* hardware only
@@ -494,6 +707,10 @@ class PJ_PG_Projector(PropertyGroup):
     calc_mean_nits: FloatProperty(name="Mean Luminance", default=0.0)
     calc_occluded_cells: IntProperty(name="Occluded Cells", default=0)
     calc_occluded_ratio: FloatProperty(name="Occluded Ratio", default=0.0, min=0.0, max=1.0)
+    # Pixel pitch on the target in metres per pixel; the panel prints mm/px.
+    calc_pixel_pitch: FloatProperty(name="Mean Pixel Pitch", default=0.0)
+    calc_pixel_pitch_min: FloatProperty(name="Min Local Pitch", default=0.0)
+    calc_pixel_pitch_max: FloatProperty(name="Max Local Pitch", default=0.0)
     has_result: BoolProperty(name="Has Result", default=False)
 
 
@@ -521,7 +738,7 @@ class PJ_PG_CalibrationReading(PropertyGroup):
     label: StringProperty(name="Label", default="")
     s: FloatProperty(
         name="Arc Position s",
-        description="Distance along the wall arc from its left edge (m)",
+        description="Distance along the wall arc from its left edge",
         default=0.0,
         min=0.0,
         precision=3,
@@ -530,7 +747,7 @@ class PJ_PG_CalibrationReading(PropertyGroup):
     )
     z: FloatProperty(
         name="Height z",
-        description="Height above the wall base (m)",
+        description="Height above the wall base",
         default=0.0,
         min=0.0,
         precision=3,
@@ -645,6 +862,29 @@ class PJ_PG_Scene(PropertyGroup):
     weight_kg: FloatProperty(default=0.0, min=0.0)
     source_url: StringProperty(default="")
     verified: BoolProperty(default=False)
+    res_x: IntProperty(
+        name="Resolution X",
+        description="Native horizontal pixels of the applied model (0 = assumed from the aspect)",
+        default=0,
+        min=0,
+        max=16384,
+        update=_update_array,
+    )
+    res_y: IntProperty(
+        name="Resolution Y",
+        description="Native vertical pixels of the applied model (0 = assumed from the aspect)",
+        default=0,
+        min=0,
+        max=16384,
+        update=_update_array,
+    )
+
+    # -- blended canvas across the scene's projectors (written by analysis) --
+    canvas_projectors: IntProperty(default=0)
+    canvas_px_x: IntProperty(default=0)
+    canvas_px_y: IntProperty(default=0)
+    canvas_overlap_px: IntProperty(default=0)
+    canvas_width: FloatProperty(default=0.0)
 
     # -- analysis settings --------------------------------------------------
     samples: IntProperty(
@@ -885,11 +1125,12 @@ class PJ_PG_Scene(PropertyGroup):
     )
     farthest_viewer_distance: FloatProperty(
         name="Farthest Viewer Distance",
-        description="Distance (m) to farthest viewer for quick DISCAS audit (0 = scene objects only)",
+        description="Distance to the farthest viewer for a quick DISCAS audit (0 = scene objects only)",
         default=0.0,
         min=0.0,
         max=200.0,
         precision=2,
+        unit="LENGTH",
         update=_update_analysis,
     )
     draw_frustums: BoolProperty(
@@ -938,7 +1179,97 @@ class PJ_PG_Scene(PropertyGroup):
     )
     calibration_index: IntProperty(name="Active Reading Index", default=0)
 
-    # -- lens scratchpad ----------------------------------------------------
+    # -- Image & Pixel Calculator scratchpad --------------------------------
+    calc_res_preset: EnumProperty(
+        name="Resolution",
+        description="Signal resolution for the calculator",
+        items=CALC_RES_ITEMS,
+        default="NATIVE",
+        update=_update_calc_resolution,
+    )
+    calc_res_x: IntProperty(
+        name="Res X", default=1920, min=1, max=16384, update=_update_calc_resolution
+    )
+    calc_res_y: IntProperty(
+        name="Res Y", default=1200, min=1, max=16384, update=_update_calc_resolution
+    )
+    calc_height: FloatProperty(
+        name="Image Height",
+        default=3.125,
+        min=0.01,
+        unit="LENGTH",
+        precision=3,
+        update=_update_calc_height,
+    )
+    calc_diagonal: FloatProperty(
+        name="Diagonal",
+        default=5.896,
+        min=0.01,
+        unit="LENGTH",
+        precision=3,
+        update=_update_calc_diagonal,
+    )
+    calc_lens_height: FloatProperty(
+        name="Lens Height AFF",
+        description="Height of the lens centre (optical axis) above the finished floor",
+        default=3.0,
+        min=0.0,
+        unit="LENGTH",
+        precision=3,
+    )
+    calc_shift_v: FloatProperty(
+        name="Vertical Shift",
+        description=(
+            "Image centre offset from the optical axis as a fraction of image "
+            "height, positive up (same convention as the projectors; 0.5 puts the "
+            "axis on the image edge)"
+        ),
+        default=0.0,
+        min=-2.0,
+        max=2.0,
+        precision=3,
+    )
+    calc_check_target: BoolProperty(
+        name="Check Against Screen",
+        description="Compare the image edges with a screen bottom edge and height",
+        default=False,
+    )
+    calc_target_bottom: FloatProperty(
+        name="Screen Bottom AFF", default=0.9, min=0.0, unit="LENGTH", precision=3
+    )
+    calc_target_height: FloatProperty(
+        name="Screen Height",
+        description="Screen height; 0 checks the bottom edge only",
+        default=0.0,
+        min=0.0,
+        unit="LENGTH",
+        precision=3,
+    )
+    calc_viewing_distance: FloatProperty(
+        name="Viewer Distance",
+        description="Viewer distance from the screen for acuity checks (0 = skip)",
+        default=0.0,
+        min=0.0,
+        unit="LENGTH",
+        precision=3,
+    )
+    calc_projector_count: IntProperty(
+        name="Projectors", description="Projectors blended side by side", default=1, min=1, max=24
+    )
+    calc_overlap: FloatProperty(
+        name="Overlap",
+        description="Blend overlap as a fraction of one image width",
+        default=0.15,
+        min=0.0,
+        max=0.6,
+        precision=3,
+        subtype="FACTOR",
+    )
+    scenarios: CollectionProperty(type=PJ_PG_Scenario, name="Scenarios")
+    scenario_index: IntProperty(name="Active Scenario", default=0)
+    scenario_name: StringProperty(
+        name="Scenario Name", description="Name for the next saved scenario", default=""
+    )
     calc_distance: FloatProperty(
         name="Distance",
         default=6.0,
@@ -975,6 +1306,7 @@ class PJ_PG_Scene(PropertyGroup):
 
 _CLASSES = (
     PJ_PG_ReportLine,
+    PJ_PG_Scenario,
     PJ_PG_Wall,
     PJ_PG_Occluder,
     PJ_PG_CalibrationReading,

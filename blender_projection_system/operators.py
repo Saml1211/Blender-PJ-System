@@ -23,6 +23,7 @@ from . import visualization as viz
 from .core.array import MODE_LEVEL, MODE_TILT
 from .core.errors import ProjectionError
 from .core.footprint import footprint_corners_world
+from .core.pixels import evaluate_scenario, scenarios_to_csv, surface_pitch
 from .core.pose import level_pose, look_at
 from .core.report_export import (
     RiggingItem,
@@ -203,8 +204,8 @@ class PJ_OT_create_curved_wall(Operator):
 
         self.report(
             {"INFO"},
-            f"Created {wall.arc_length:.2f} m x {self.height:.2f} m curved wall "
-            f"(R={self.radius:.2f} m, {self.arc_deg:.0f} deg)",
+            f"Created {wall.arc_length * 1000:.0f} mm x {self.height * 1000:.0f} mm curved wall "
+            f"(R={self.radius * 1000:.0f} mm, {self.arc_deg:.0f} deg)",
         )
         return {"FINISHED"}
 
@@ -287,7 +288,7 @@ class PJ_OT_create_flat_wall(Operator):
         facing_note = "toward -X" if abs(self.yaw_deg) < 1e-9 else f"at {self.yaw_deg:.0f} deg yaw"
         self.report(
             {"INFO"},
-            f"Created {wall.arc_length:.2f} m x {self.height:.2f} m flat wall facing {facing_note}",
+            f"Created {wall.arc_length * 1000:.0f} mm x {self.height * 1000:.0f} mm flat wall facing {facing_note}",
         )
         return {"FINISHED"}
 
@@ -725,7 +726,7 @@ class PJ_OT_add_reading_cursor(Operator):
         request_scene_sync(context.scene, SyncScope.ANALYSIS)
         self.report(
             {"INFO"},
-            f"Added '{row.label}' at s={hit.s:.2f} m, z={hit.z:.2f} m; enter the "
+            f"Added '{row.label}' at s={hit.s * 1000:.0f} mm, z={hit.z * 1000:.0f} mm; enter the "
             "measured lux",
         )
         return {"FINISHED"}
@@ -797,6 +798,10 @@ class PJ_OT_apply_preset_spec(Operator):
         pj.model = model.model
         pj.native_contrast = model.native_contrast
         pj.weight_kg = model.weight_kg
+        # 0 when the library row states no resolution, so every readout can
+        # label the aspect default as an assumption rather than a spec.
+        pj.res_x = model.res_x
+        pj.res_y = model.res_y
         if lens is not None:
             pj.throw_ratio_min = lens.throw_ratio_min
             pj.throw_ratio_max = lens.throw_ratio_max
@@ -868,6 +873,8 @@ def _collect_rigging_items(footprints) -> list[RiggingItem]:
         loc = obj.matrix_world.translation
         rot = obj.matrix_world.to_euler("XYZ")
         sz = image_size(max(fp.center_distance, 1e-3), spec)
+        res_x, res_y = spec.resolution
+        pitch = surface_pitch(fp)
         corners = tuple(
             (float(c[0]), float(c[1]), float(c[2])) for c in footprint_corners_world(fp)
         )
@@ -891,6 +898,12 @@ def _collect_rigging_items(footprints) -> list[RiggingItem]:
                 lumens=spec.lumens,
                 weight_kg=spec.weight_kg,
                 corners_world=corners,
+                res_x=res_x,
+                res_y=res_y,
+                pixel_pitch_mm=pitch.mean * 1000.0 if pitch else 0.0,
+                pixel_pitch_min_mm=pitch.minimum * 1000.0 if pitch else 0.0,
+                pixel_pitch_max_mm=pitch.maximum * 1000.0 if pitch else 0.0,
+                pixels_per_metre=1.0 / pitch.mean if pitch else 0.0,
             )
         )
     return items
@@ -1066,6 +1079,140 @@ class PJ_OT_export_warp(Operator):
         return {"FINISHED"}
 
 
+# ---------------------------------------------------------------------------
+# Image & Pixel Calculator scenarios
+# ---------------------------------------------------------------------------
+
+
+class PJ_OT_save_scenario(Operator):
+    """Save the calculator inputs as a named scenario for side-by-side comparison"""
+
+    bl_idname = "projection.save_scenario"
+    bl_label = "Save Scenario"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        from . import properties
+
+        pj = context.scene.pj
+        inputs = properties.calculator_inputs(pj)
+        try:
+            evaluate_scenario(inputs)
+        except ProjectionError as exc:
+            self.report({"ERROR"}, f"Scenario not saved: {exc}")
+            return {"CANCELLED"}
+        item = pj.scenarios.add()
+        item.name = pj.scenario_name.strip() or f"Scenario {len(pj.scenarios)}"
+        for name in properties.SCENARIO_FIELDS:
+            setattr(item, name, getattr(inputs, name))
+        pj.scenario_index = len(pj.scenarios) - 1
+        pj.scenario_name = ""
+        self.report({"INFO"}, f"Saved '{item.name}'")
+        return {"FINISHED"}
+
+
+class PJ_OT_load_scenario(Operator):
+    """Load the active scenario back into the calculator"""
+
+    bl_idname = "projection.load_scenario"
+    bl_label = "Load Scenario"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        pj = context.scene.pj
+        return 0 <= pj.scenario_index < len(pj.scenarios)
+
+    def execute(self, context):
+        from . import properties
+
+        pj = context.scene.pj
+        item = pj.scenarios[pj.scenario_index]
+        with properties.suspend_calculator_updates():
+            pj.calc_res_preset = "CUSTOM"
+            pj.calc_res_x = item.res_x
+            pj.calc_res_y = item.res_y
+            pj.calc_lens_height = item.lens_height
+            pj.calc_shift_v = item.lens_shift_v
+            pj.calc_check_target = item.check_target
+            pj.calc_target_bottom = item.target_bottom
+            pj.calc_target_height = item.target_height
+            pj.calc_viewing_distance = item.viewing_distance
+            pj.calc_projector_count = item.projector_count
+            pj.calc_overlap = item.overlap_fraction
+            pj.calc_distance = item.distance
+            pj.calc_throw_ratio = item.throw_ratio
+        # One solve with every field in place: distance and ratio drive the rest.
+        properties.solve_calculator(pj, distance=item.distance, throw_ratio=item.throw_ratio)
+        self.report({"INFO"}, f"Loaded '{item.name}' (lens limits stay as saved in the table)")
+        return {"FINISHED"}
+
+
+class PJ_OT_remove_scenario(Operator):
+    """Remove the active saved scenario"""
+
+    bl_idname = "projection.remove_scenario"
+    bl_label = "Remove Scenario"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        pj = context.scene.pj
+        return 0 <= pj.scenario_index < len(pj.scenarios)
+
+    def execute(self, context):
+        pj = context.scene.pj
+        pj.scenarios.remove(pj.scenario_index)
+        pj.scenario_index = min(pj.scenario_index, len(pj.scenarios) - 1)
+        return {"FINISHED"}
+
+
+class PJ_OT_export_scenarios(Operator):
+    """Export every saved scenario to a CSV file, one row each, lengths in mm"""
+
+    bl_idname = "projection.export_scenarios"
+    bl_label = "Export Scenarios CSV"
+    bl_options = {"REGISTER"}
+
+    filepath: StringProperty(subtype="FILE_PATH")
+
+    @classmethod
+    def poll(cls, context):
+        return len(context.scene.pj.scenarios) > 0
+
+    def invoke(self, context, event):
+        if not self.filepath:
+            self.filepath = "projection_scenarios.csv"
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
+
+    def execute(self, context):
+        from . import properties
+
+        if not self.filepath:
+            self.report({"WARNING"}, "No export file path specified")
+            return {"CANCELLED"}
+        rows = []
+        try:
+            for item in context.scene.pj.scenarios:
+                inputs = properties.scenario_inputs(item)
+                rows.append((item.name, inputs, evaluate_scenario(inputs)))
+        except ProjectionError as exc:
+            self.report({"ERROR"}, f"Scenario export failed: {exc}")
+            return {"CANCELLED"}
+        filepath = self.filepath
+        if not filepath.lower().endswith(".csv"):
+            filepath += ".csv"
+        try:
+            with open(filepath, "w", encoding="utf-8", newline="") as f:
+                f.write(scenarios_to_csv(rows))
+        except OSError as exc:
+            self.report({"ERROR"}, f"Failed to write export file: {exc}")
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"Exported {len(rows)} scenario(s) to {filepath}")
+        return {"FINISHED"}
+
+
 _CLASSES = (
     PJ_OT_create_curved_wall,
     PJ_OT_create_flat_wall,
@@ -1086,6 +1233,10 @@ _CLASSES = (
     PJ_OT_import_spec_csv,
     PJ_OT_export_analysis,
     PJ_OT_export_warp,
+    PJ_OT_save_scenario,
+    PJ_OT_load_scenario,
+    PJ_OT_remove_scenario,
+    PJ_OT_export_scenarios,
 )
 
 

@@ -297,7 +297,9 @@ def test_ui_calculator_delegates_to_production_core_helpers():
     for helper in (
         "wall_from_object",
         "aspect_ratio",
-        "image_height_from_width",
+        # Image size, pitch, edges and canvas all come from one core call,
+        # which reaches image_height_from_width through pixels.solve_image.
+        "evaluate_scenario",
         "nominal_screen_illuminance",
         "luminance_nits",
     ):

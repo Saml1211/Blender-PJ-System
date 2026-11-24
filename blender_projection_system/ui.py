@@ -8,12 +8,24 @@ Every operator the add-on registers is reachable from here - a static test in
 from __future__ import annotations
 
 import bpy
-from bpy.types import Panel
+from bpy.types import Panel, UIList
 
+from . import properties
 from . import visualization as viz
 from .core.errors import ProjectionError
 from .core.photometry import luminance_nits, nominal_screen_illuminance
-from .core.throw import ImageSize, ProjectorSpec, aspect_ratio, image_height_from_width
+from .core.pixels import (
+    evaluate_scenario,
+    fmt_mm,
+    fmt_pitch,
+    fmt_size,
+    scenario_rows,
+    shift_for_bottom_edge,
+)
+from .core.throw import ProjectorSpec, aspect_ratio, default_resolution
+
+#: Saved scenarios shown side by side in the compare table at once.
+COMPARE_COLUMNS = 4
 
 CATEGORY = "Projection"
 
@@ -80,7 +92,7 @@ class PJ_PT_target(_Base):
             box.label(text=str(exc), icon="ERROR")
             return
         info = box.column(align=True)
-        info.label(text=f"Arc length: {surface.arc_length:.2f} m")
+        info.label(text=f"Arc length: {fmt_mm(surface.arc_length)}")
         info.label(text=f"Surface area: {surface.area:.1f} m2")
         if props.kind != "MESH":
             info.label(text="Geometry updates live.", icon="DRIVER")
@@ -181,6 +193,10 @@ class PJ_PT_selected_projector(_Base):
         row.prop(p, "aspect_w", text="Aspect")
         row.label(text=":")
         row.prop(p, "aspect_h", text="")
+        row = col.row(align=True)
+        row.prop(p, "res_x", text="Res")
+        row.label(text="x")
+        row.prop(p, "res_y", text="")
         col.prop(p, "lumens")
 
         box = layout.box()
@@ -217,6 +233,25 @@ class PJ_PT_selected_projector(_Base):
         col.prop(p, "calc_image_width")
         col.prop(p, "calc_image_height")
         col.prop(p, "calc_arc_span")
+        res_x, res_y = (
+            (p.res_x, p.res_y) if p.res_x > 0 and p.res_y > 0
+            else default_resolution(p.aspect_w, p.aspect_h)
+        )
+        assumed = "" if p.res_x > 0 and p.res_y > 0 else " (assumed from aspect)"
+        pix = box.column(align=True)
+        pix.label(text=f"Native: {res_x} x {res_y} px{assumed}", icon="TEXTURE")
+        pix.label(
+            text=f"Image on target: {fmt_size(p.calc_image_width, p.calc_image_height)}"
+        )
+        if p.calc_pixel_pitch > 0.0:
+            pix.label(
+                text=f"Pitch: {fmt_pitch(p.calc_pixel_pitch)} mean, "
+                f"{1.0 / p.calc_pixel_pitch:.0f} px/m"
+            )
+            pix.label(
+                text=f"Local pitch: {fmt_pitch(p.calc_pixel_pitch_min)} to "
+                f"{fmt_pitch(p.calc_pixel_pitch_max)}"
+            )
         box.label(text=f"On surface: {p.calc_hit_ratio * 100:.0f}%")
         box.label(text=f"Worst incidence: {p.calc_max_incidence_deg:.1f} deg")
         if p.calc_mean_nits > 0.0:
@@ -254,6 +289,21 @@ class PJ_PT_analysis(_Base):
         col = layout.column(align=True)
         col.operator("projection.analyze", icon="FILE_REFRESH")
         col.operator("projection.clear_analysis", icon="TRASH")
+
+        if pj.has_report and pj.canvas_projectors > 0:
+            canvas = layout.box()
+            canvas.label(text="Blended Canvas on Target", icon="TEXTURE")
+            c_col = canvas.column(align=True)
+            c_col.label(
+                text=f"{pj.canvas_px_x} x {pj.canvas_px_y} px from "
+                f"{pj.canvas_projectors} projector(s)"
+            )
+            if pj.canvas_width > 0.0:
+                c_col.label(
+                    text=f"Width {fmt_mm(pj.canvas_width)}, "
+                    f"{pj.canvas_px_x / (pj.canvas_width * 1000.0):.3f} px/mm"
+                )
+            c_col.label(text=f"{pj.canvas_overlap_px} px inside blend zones")
 
         box = layout.box()
         box.label(text="Settings", icon="PREFERENCES")
@@ -328,7 +378,7 @@ class PJ_PT_analysis(_Base):
         discas_box.prop(pj, "enable_discas", text="DISCAS Viewer Audit (V202.01)")
         if pj.enable_discas:
             d_col = discas_box.column(align=True)
-            d_col.prop(pj, "farthest_viewer_distance", text="Farthest Viewer (m)")
+            d_col.prop(pj, "farthest_viewer_distance", text="Farthest Viewer")
             row = d_col.row(align=True)
             row.prop(pj, "discas_element_height_pct", text="BDM %EH")
             row.prop(pj, "discas_vertical_resolution", text="ADM V-Res")
@@ -393,10 +443,21 @@ class PJ_PT_report(_Base):
                 info.label(text=entry.text)
 
 
-class PJ_PT_calculator(_Base):
-    """A standalone throw calculator, independent of the scene."""
+class PJ_UL_scenarios(UIList):
+    """Saved calculator scenarios, one compact line each."""
 
-    bl_label = "Lens Calculator"
+    bl_idname = "PJ_UL_scenarios"
+
+    def draw_item(self, _context, layout, _data, item, _icon, _active_data, _propname, _index):
+        row = layout.row(align=True)
+        row.prop(item, "name", text="", emboss=False)
+        row.label(text=f"{item.res_x}x{item.res_y}  TR {item.throw_ratio:.2f}")
+
+
+class PJ_PT_calculator(_Base):
+    """Trial image size, pixel and placement scenarios without moving the rig."""
+
+    bl_label = "Image & Pixel Calculator"
     bl_idname = "PJ_PT_calculator"
     bl_options = {"DEFAULT_CLOSED"}
 
@@ -404,33 +465,150 @@ class PJ_PT_calculator(_Base):
         layout = self.layout
         pj = context.scene.pj
 
-        layout.label(text="Edit any two; the third follows.")
-        col = layout.column(align=True)
-        col.prop(pj, "calc_distance")
-        col.prop(pj, "calc_width")
-        col.prop(pj, "calc_throw_ratio")
+        res_x, res_y, res_label = properties.calculator_resolution(pj)
+        tr_min, tr_max, _max_v, _max_h, lens_label = properties.calculator_lens(pj)
 
-        if pj.aspect_h > 0 and pj.calc_width > 0:
-            aspect = aspect_ratio(pj.aspect_w, pj.aspect_h)
-            height = image_height_from_width(pj.calc_width, aspect)
-            image = ImageSize(pj.calc_width, height)
-            box = layout.box()
-            box.label(text=f"Image height: {height:.3f} m")
-            box.label(text=f"Diagonal: {image.diagonal:.3f} m ({image.diagonal * 39.3701:.0f} in)")
-            if pj.lumens > 0:
-                spec = ProjectorSpec(
-                    throw_ratio=pj.calc_throw_ratio,
-                    aspect_w=pj.aspect_w,
-                    aspect_h=pj.aspect_h,
-                    lumens=pj.lumens,
-                )
-                lux = nominal_screen_illuminance(spec, image.area)
-                box.label(text=f"Mean illuminance: {lux:.0f} lux")
-                box.label(text=f"Mean luminance: {luminance_nits(lux, pj.screen_gain):.0f} nits")
-            box.label(text="Flat screen, no ambient light.", icon="INFO")
+        box = layout.box()
+        box.label(text="Signal", icon="TEXTURE")
+        col = box.column(align=True)
+        col.prop(pj, "calc_res_preset", text="")
+        if pj.calc_res_preset == "CUSTOM":
+            row = col.row(align=True)
+            row.prop(pj, "calc_res_x", text="X")
+            row.prop(pj, "calc_res_y", text="Y")
+        col.label(text=f"{res_x} x {res_y} px, {aspect_ratio(res_x, res_y):.3f}:1 ({res_label})")
+        lens_range = f"TR {tr_min:.2f}-{tr_max:.2f}:1" if tr_min > 0.0 else "no TR range"
+        col.label(text=f"Lens: {lens_label}, {lens_range}")
+
+        box = layout.box()
+        box.label(text="Throw and Image (edit one, the rest follow)", icon="CAMERA_DATA")
+        col = box.column(align=True)
+        col.prop(pj, "calc_distance")
+        col.prop(pj, "calc_throw_ratio")
+        col.prop(pj, "calc_width")
+        col.prop(pj, "calc_height")
+        col.prop(pj, "calc_diagonal")
+
+        box = layout.box()
+        box.label(text="Height, Viewer and Array", icon="EMPTY_SINGLE_ARROW")
+        col = box.column(align=True)
+        col.prop(pj, "calc_lens_height")
+        col.prop(pj, "calc_shift_v")
+        col.prop(pj, "calc_check_target")
+        if pj.calc_check_target:
+            col.prop(pj, "calc_target_bottom")
+            col.prop(pj, "calc_target_height")
+        col.separator()
+        col.prop(pj, "calc_viewing_distance")
+        row = col.row(align=True)
+        row.prop(pj, "calc_projector_count")
+        row.prop(pj, "calc_overlap")
+
+        try:
+            inputs = properties.calculator_inputs(pj)
+            result = evaluate_scenario(inputs)
+        except ProjectionError as exc:
+            layout.label(text=str(exc), icon="ERROR")
+            return
+
+        out = layout.box()
+        out.label(text="Results", icon="DRIVER")
+        o_col = out.column(align=True)
+        img = result.image
+        o_col.label(text=f"Image {fmt_size(img.width, img.height)}, diag {fmt_mm(img.diagonal)}")
+        o_col.label(text=f"Pitch {fmt_pitch(result.pitch)}, {result.pixels_per_metre:.0f} px/m")
+        o_col.label(
+            text=f"Image AFF: bottom {fmt_mm(result.extent.bottom)}, top {fmt_mm(result.extent.top)}"
+        )
+        if pj.calc_check_target:
+            shift = shift_for_bottom_edge(inputs.lens_height, img.height, inputs.target_bottom)
+            o_col.label(text=f"Shift for screen bottom edge: {shift:+.3f}")
+        o_col.label(text=f"1-arcmin (20/20) distance: {fmt_mm(result.one_arcminute_distance)}")
+        if inputs.viewing_distance > 0.0:
+            o_col.label(text=f"Viewer: {result.pixels_per_degree:.1f} px/deg")
+        canvas = result.canvas
+        if canvas.projectors > 1:
+            o_col.label(
+                text=f"Canvas {canvas.pixels_x} x {canvas.pixels_y} px, {fmt_mm(canvas.width)}, "
+                f"{canvas.pixels_per_metre / 1000.0:.3f} px/mm"
+            )
+        if pj.lumens > 0:
+            spec = ProjectorSpec(
+                throw_ratio=img.throw_ratio,
+                aspect_w=res_x,
+                aspect_h=res_y,
+                lumens=pj.lumens,
+            )
+            lux = nominal_screen_illuminance(spec, img.width * img.height)
+            o_col.label(
+                text=f"{lux:.0f} lux, {luminance_nits(lux, pj.screen_gain):.0f} nits "
+                "(flat screen, no ambient)"
+            )
+        if result.warnings:
+            warn = layout.box()
+            warn.alert = True
+            for text in result.warnings:
+                warn.label(text=text, icon="ERROR")
+
+        self._draw_scenarios(layout, pj)
+
+    @staticmethod
+    def _draw_scenarios(layout, pj):
+        box = layout.box()
+        box.label(text="Scenarios", icon="PRESET")
+        row = box.row(align=True)
+        row.prop(pj, "scenario_name", text="")
+        row.operator("projection.save_scenario", text="Save", icon="ADD")
+        if len(pj.scenarios) == 0:
+            box.label(text="Save a scenario to compare it", icon="INFO")
+            return
+        box.template_list(
+            "PJ_UL_scenarios",
+            "",
+            pj,
+            "scenarios",
+            pj,
+            "scenario_index",
+            rows=min(len(pj.scenarios), 4),
+        )
+        row = box.row(align=True)
+        row.operator("projection.load_scenario", text="Load", icon="IMPORT")
+        row.operator("projection.remove_scenario", text="Remove", icon="REMOVE")
+        row.operator("projection.export_scenarios", text="CSV", icon="EXPORT")
+
+        # Side by side: a window of saved scenarios around the active one.
+        first = max(0, min(pj.scenario_index, len(pj.scenarios) - COMPARE_COLUMNS))
+        shown = list(pj.scenarios)[first : first + COMPARE_COLUMNS]
+        tables = []
+        for item in shown:
+            try:
+                inputs = properties.scenario_inputs(item)
+                tables.append(scenario_rows(inputs, evaluate_scenario(inputs)))
+            except ProjectionError as exc:
+                tables.append([("Error", str(exc))])
+        compare = box.box()
+        grid = compare.grid_flow(
+            row_major=True, columns=len(shown) + 1, even_columns=False, align=True
+        )
+        grid.label(text="")
+        for item in shown:
+            grid.label(text=item.name)
+        for index, (label, _value) in enumerate(tables[0]):
+            if label == "Warnings":
+                continue
+            grid.label(text=label)
+            for table in tables:
+                grid.label(text=table[index][1] if index < len(table) else "")
+        for item, table in zip(shown, tables, strict=True):
+            warnings = dict(table).get("Warnings", "none")
+            if warnings != "none":
+                row = compare.row()
+                row.alert = True
+                row.label(text=f"{item.name}: {warnings}", icon="ERROR")
 
 
 _CLASSES = (
+    PJ_UL_scenarios,
     PJ_PT_target,
     PJ_PT_projectors,
     PJ_PT_selected_projector,

@@ -480,6 +480,11 @@ def fmt_mm(metres: float) -> str:
     return f"{metres * _MM:.0f} mm"
 
 
+def fmt_size(width: float, height: float) -> str:
+    """Width by height in whole millimetres, e.g. ``"9158 x 5724 mm"``."""
+    return f"{width * _MM:.0f} x {height * _MM:.0f} mm"
+
+
 def fmt_pitch(metres_per_px: float) -> str:
     """Pixel pitch to 0.01 mm, e.g. ``"4.77 mm/px"``."""
     return f"{metres_per_px * _MM:.2f} mm/px"
@@ -492,7 +497,7 @@ def scenario_rows(inp: ScenarioInputs, res: ScenarioResult) -> list[tuple[str, s
         ("Resolution", f"{inp.res_x} x {inp.res_y}"),
         ("Throw distance", fmt_mm(img.distance)),
         ("Throw ratio", f"{img.throw_ratio:.3f}:1"),
-        ("Image W x H", f"{img.width * _MM:.0f} x {img.height * _MM:.0f} mm"),
+        ("Image W x H", fmt_size(img.width, img.height)),
         ("Diagonal", fmt_mm(img.diagonal)),
         ("Pixel pitch", fmt_pitch(res.pitch)),
         ("Density", f"{res.pixels_per_metre:.0f} px/m"),

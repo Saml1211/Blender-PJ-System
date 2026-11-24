@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import io
+import math
 
 import pytest
 
@@ -242,3 +243,56 @@ def test_default_resolution_assumption():
     assert default_resolution(16, 9) == (1920, 1080)
     assert ProjectorSpec(aspect_w=16, aspect_h=10).resolution == (1920, 1200)
     assert ProjectorSpec(res_x=3840, res_y=2160).resolution == (3840, 2160)
+
+
+# -- 23538 regression: concave R3750, two level 16:10 projectors, vertical spill ----
+# Reference: a per-pixel ray cast of all 1920 columns of each camera onto the same
+# cylinder found 675 of 1200 rows on the wall, a 413 px blend per image, and a
+# 3427 px canvas over the 11,781 mm arc. The coarse 9-sample estimate reported
+# 1200 rows, 276 px blended and an arc longer than the wall.
+
+
+def _concave_pair():
+    from blender_projection_system.core.surfaces import CylindricalWall
+
+    wall = CylindricalWall(
+        radius=3.75, height=3.24, angle_start=math.radians(-90.0), angle_end=math.radians(90.0)
+    )
+    spec = ProjectorSpec(
+        throw_ratio=0.36, aspect_w=16, aspect_h=10, lens_shift_v=-0.3841, res_x=1920, res_y=1200
+    )
+    footprints = []
+    for name, y, yaw in (("PJ_01", -0.298, -41.351), ("PJ_02", 0.298, 41.351)):
+        direction = (math.cos(math.radians(yaw)), math.sin(math.radians(yaw)), 0.0)
+        pose = level_pose((0.3385, y, 2.8), direction)
+        footprints.append(compute_footprint(pose, spec, wall, samples=9, name=name))
+    return wall, footprints
+
+
+def test_canvas_rows_count_only_rows_that_land_on_the_wall():
+    wall, footprints = _concave_pair()
+    canvas = analyze_coverage(footprints, wall, grid_s=120, grid_z=24).canvas
+    assert canvas.pixels_y == pytest.approx(675, rel=0.02)
+
+
+def test_canvas_blend_counts_image_columns_inside_the_overlap():
+    wall, footprints = _concave_pair()
+    canvas = analyze_coverage(footprints, wall, grid_s=120, grid_z=24).canvas
+    assert canvas.overlap_px_total == pytest.approx(413, rel=0.05)
+    assert canvas.pixels_x == pytest.approx(3427, rel=0.01)
+
+
+def test_canvas_arc_never_exceeds_the_wall():
+    wall, footprints = _concave_pair()
+    # The live 23538 coverage grid; the raster estimate overshot the wall here.
+    canvas = analyze_coverage(footprints, wall, grid_s=200, grid_z=54).canvas
+    assert canvas.width <= wall.arc_length + 1e-9
+    assert canvas.width == pytest.approx(11.781, abs=0.01)
+
+
+def test_local_pitch_on_the_curved_wall_matches_the_per_pixel_cast():
+    _wall, footprints = _concave_pair()
+    pitch = surface_pitch(footprints[0])
+    assert pitch.minimum * 1000.0 == pytest.approx(1.72, abs=0.02)
+    assert pitch.mean * 1000.0 == pytest.approx(3.32, abs=0.02)
+    assert pitch.maximum * 1000.0 == pytest.approx(4.77, abs=0.02)

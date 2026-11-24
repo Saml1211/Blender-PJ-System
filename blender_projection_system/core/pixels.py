@@ -23,6 +23,7 @@ from .throw import (
     ProjectorSpec,
     image_height_from_width,
     image_width_from_distance,
+    ray_direction_local,
     required_lens_shift_v,
     throw_distance_from_width,
     throw_ratio_from,
@@ -279,44 +280,161 @@ def blended_canvas(
     return Canvas(count, pixels_x, res_y, seams * overlap_px, width)
 
 
-def array_canvas(footprints: Sequence, blend_zones: Sequence) -> Canvas | None:
-    """Blended canvas of the projectors actually on a wall.
+@dataclass(frozen=True)
+class RasterOnTarget:
+    """Where one projector's real pixel raster lands on the target.
 
-    Uses each footprint's own resolution (``spec.resolution``) and arc span,
-    and the measured overlap of each blend zone: a zone covering fraction
-    ``f`` of a projector's arc span removes ``f * res_x`` of its pixels,
-    averaged over the two neighbours. Physical width is the summed arc spans
-    less the blend-zone widths. ``None`` when no footprint lands.
+    Built by casting individual pixels, not the coarse footprint grid:
+    ``rows_on_target`` counts the image rows of one column (the centre column
+    when it reaches the target) that hit the wall, and ``column_s`` is the arc
+    position of every column on the row through the middle of those rows,
+    ``None`` where that column misses. For a level projector every column is a
+    vertical plane, so one row describes the horizontal raster at all heights.
     """
-    usable = [fp for fp in footprints if fp.hit_ratio > 0.0 and fp.arc_span > 0.0]
-    if not usable:
+
+    name: str
+    res_x: int
+    res_y: int
+    rows_on_target: int
+    row_v: float
+    column_s: tuple[float | None, ...]
+
+    @property
+    def hits(self) -> list[float]:
+        return [s for s in self.column_s if s is not None]
+
+    @property
+    def columns_on_target(self) -> int:
+        return len(self.hits)
+
+
+def _pixel_hit(footprint, u: float, v: float):
+    direction = footprint.pose.local_to_world_dir(ray_direction_local(u, v, footprint.spec))
+    return footprint.wall.intersect_ray(footprint.pose.origin, direction)
+
+
+def raster_on_target(footprint) -> RasterOnTarget | None:
+    """Cast one column and one row of real pixels onto the footprint's wall.
+
+    Pixel ``(i, j)`` sits at ``u = (i + 0.5) / res_x - 0.5`` and
+    ``v = 0.5 - (j + 0.5) / res_y``. The column is the image centre column;
+    if it misses the wall entirely, the column of the footprint sample
+    nearest the centre that hit is used. ``None`` when nothing lands.
+    Cached on the footprint, which is rebuilt whenever the scene changes.
+    """
+    cached = getattr(footprint, "_raster_on_target", None)
+    if cached is not None:
+        return cached
+    if footprint.hit_ratio <= 0.0:
         return None
-    res = {fp.name: fp.spec.resolution for fp in usable}
-    overlap = 0
-    for zone in blend_zones:
-        if zone.left not in res or zone.right not in res:
+    res_x, res_y = footprint.spec.resolution
+    row_vs = [0.5 - (j + 0.5) / res_y for j in range(res_y)]
+    candidates = [0.0] + [
+        sample.u
+        for sample in sorted(footprint.samples, key=lambda smp: (abs(smp.u), abs(smp.v)))
+        if sample.hit is not None
+    ]
+    rows: list[float] = []
+    for u in candidates:
+        rows = [v for v in row_vs if _pixel_hit(footprint, u, v) is not None]
+        if rows:
+            break
+    if not rows:
+        return None
+    row_v = rows[len(rows) // 2]
+    column_s: list[float | None] = []
+    for i in range(res_x):
+        hit = _pixel_hit(footprint, (i + 0.5) / res_x - 0.5, row_v)
+        column_s.append(hit.s if hit is not None else None)
+    if footprint.wall.wraps_around:
+        column_s = _unwrap(column_s, footprint.wall.arc_length)
+    raster = RasterOnTarget(footprint.name, res_x, res_y, len(rows), row_v, tuple(column_s))
+    footprint._raster_on_target = raster
+    return raster
+
+
+def _unwrap(values: list[float | None], circumference: float) -> list[float | None]:
+    """Make arc positions continuous across the seam of a full-circle wall."""
+    out: list[float | None] = []
+    previous: float | None = None
+    offset = 0.0
+    for value in values:
+        if value is None:
+            out.append(None)
             continue
-        overlap += round(
-            0.5
-            * (
-                zone.overlap_fraction_left * res[zone.left][0]
-                + zone.overlap_fraction_right * res[zone.right][0]
-            )
-        )
-    pixels_x = sum(r[0] for r in res.values()) - overlap
-    width = sum(fp.arc_span for fp in usable) - sum(z.width for z in blend_zones)
+        if previous is not None:
+            jump = value + offset - previous
+            offset -= round(jump / circumference) * circumference
+        out.append(value + offset)
+        previous = value + offset
+    return out
+
+
+def array_canvas(footprints: Sequence, blend_zones: Sequence) -> Canvas | None:
+    """Blended canvas of the projectors on a wall, counted in real pixels.
+
+    * ``pixels_x``: columns on the target summed over the array, less each
+      blend: for every neighbouring pair in ``blend_zones`` the overlap is the
+      shared stretch of their column hits on the target, and the blend removes
+      the mean of the two images' column counts inside it.
+    * ``pixels_y``: the fewest image rows on the target along any projector's
+      centre column (see :func:`raster_on_target`), so vertical spill onto
+      the floor or ceiling is not counted.
+    * ``width``: lit arc, the summed column spans less the overlaps, never more
+      than the wall's arc length.
+
+    ``blend_zones`` supplies adjacency only. ``None`` when nothing lands.
+    """
+    rasters = {}
+    for fp in footprints:
+        raster = raster_on_target(fp)
+        if raster is not None and raster.hits:
+            rasters[fp.name] = (fp, raster)
+    if not rasters:
+        return None
+    overlap_px = 0
+    overlap_len = 0.0
+    seen: set[frozenset[str]] = set()
+    for zone in blend_zones:
+        key = frozenset((zone.left, zone.right))
+        if zone.left not in rasters or zone.right not in rasters or key in seen:
+            continue
+        seen.add(key)
+        fp_a, a = rasters[zone.left]
+        _fp_b, b = rasters[zone.right]
+        sa, sb = a.hits, b.hits
+        if fp_a.wall.wraps_around:
+            circumference = fp_a.wall.arc_length
+            centre_a = 0.5 * (min(sa) + max(sa))
+            centre_b = 0.5 * (min(sb) + max(sb))
+            shift = round((centre_a - centre_b) / circumference) * circumference
+            sb = [x + shift for x in sb]
+        lo, hi = max(min(sa), min(sb)), min(max(sa), max(sb))
+        if hi <= lo:
+            continue
+        inside = [sum(1 for x in hits if lo <= x <= hi) for hits in (sa, sb)]
+        overlap_px += round(0.5 * (inside[0] + inside[1]))
+        overlap_len += hi - lo
+    pixels_x = sum(r.columns_on_target for _fp, r in rasters.values()) - overlap_px
+    span = sum(max(r.hits) - min(r.hits) for _fp, r in rasters.values()) - overlap_len
+    wall_arc = next(iter(rasters.values()))[0].wall.arc_length
     return Canvas(
-        len(usable), pixels_x, min(r[1] for r in res.values()), overlap, max(width, 0.0)
+        len(rasters),
+        pixels_x,
+        min(r.rows_on_target for _fp, r in rasters.values()),
+        overlap_px,
+        min(max(span, 0.0), wall_arc),
     )
 
 
 @dataclass(frozen=True)
 class SurfacePitch:
-    """Pixel pitch of one projector on the target surface (m/px).
+    """Horizontal pixel pitch of one projector on the target surface (m/px).
 
-    ``mean`` is the arc span over the horizontal resolution. ``minimum`` and
-    ``maximum`` are local pitches from neighbouring footprint samples along
-    each image row, so keystone and curvature show up as a spread.
+    From the per-pixel row of :func:`raster_on_target`: ``mean`` is the arc
+    the on-target columns cover divided by their count, ``minimum`` and
+    ``maximum`` the narrowest and widest single pixel along that row, so
+    keystone and curvature show up as a spread.
     """
 
     mean: float
@@ -325,28 +443,21 @@ class SurfacePitch:
 
 
 def surface_pitch(footprint) -> SurfacePitch | None:
-    """Mean and local pixel pitch of a sampled footprint, or ``None``.
-
-    The footprint grid has ``grid`` samples per axis with the outer samples
-    on the image edges, so neighbours in a row are ``res_x / (grid - 1)``
-    pixels apart. Their 3D chord divided by that is the local pitch.
-    """
-    res_x = footprint.spec.resolution[0]
-    if footprint.hit_ratio <= 0.0 or footprint.arc_span <= 0.0:
+    """Mean and local pixel pitch on the target, or ``None`` if nothing lands."""
+    raster = raster_on_target(footprint)
+    if raster is None or raster.columns_on_target < 2:
         return None
-    n = footprint.grid
-    step_px = res_x / (n - 1)
-    local: list[float] = []
-    for row in range(n):
-        for col in range(n - 1):
-            a = footprint.samples[row * n + col].hit
-            b = footprint.samples[row * n + col + 1].hit
-            if a is not None and b is not None:
-                local.append(math.dist(a.point, b.point) / step_px)
-    mean = footprint.arc_span / res_x
-    if not local:
+    steps: list[float] = []
+    previous: float | None = None
+    for s_value in raster.column_s:
+        if s_value is not None and previous is not None:
+            steps.append(abs(s_value - previous))
+        previous = s_value
+    hits = raster.hits
+    mean = (max(hits) - min(hits)) / (len(hits) - 1)
+    if not steps:
         return SurfacePitch(mean, mean, mean)
-    return SurfacePitch(mean, min(local), max(local))
+    return SurfacePitch(mean, min(steps), max(steps))
 
 
 # ---------------------------------------------------------------------------

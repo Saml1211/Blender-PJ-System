@@ -119,6 +119,13 @@ including per-projector throw ratio limits and horizontal shift — and the
 values computed for it by the last analysis. Computed fields are greyed out
 because they are consequences of the geometry, not inputs.
 
+It also shows the projector's native resolution (from the library row, or
+"assumed from aspect" when the row states none), the image size on the target
+in mm, and the pixel pitch on the target: the mean (arc covered divided by the
+horizontal resolution, in mm/px and px/m) and the local minimum and maximum
+measured between neighbouring footprint samples, so keystone and curvature
+show up as a spread.
+
 ---
 
 ## 3. Analysis
@@ -135,6 +142,14 @@ immediately.
 | **Grid Arc / Height** | Resolution of the coverage raster over the wall |
 | **Screen Gain** | Gain of the wall finish. 1.0 is matte white |
 | **Draw Frustums** | Include the lens-to-corner wireframes |
+
+**Blended Canvas on Target** appears once a report exists: the total pixel
+raster across every projector on the wall, the canvas width in mm and the
+pixel density. Each blend zone removes its measured overlap, as a fraction of
+each neighbour's arc span, from the summed horizontal resolutions. The same
+numbers go into the report text, the JSON/CSV export, and new `Res_X`,
+`Res_Y`, `Pixel_Pitch_mm`, `Pixel_Pitch_Min_mm`, `Pixel_Pitch_Max_mm` and
+`Px_per_m` columns at the end of the rigging schedule.
 
 **Clear Analysis** deletes only owner-tagged overlay objects from the add-on's
 analysis collection. Your wall, projectors, and same-named user collections are
@@ -166,14 +181,34 @@ to be usable, or a brightness figure below the cinema-white reference.
 
 ---
 
-## Lens Calculator
+## Image & Pixel Calculator
 
-A standalone scratchpad, independent of the scene. Edit any two of distance,
-image width and throw ratio, and the third follows. It also shows image height,
-diagonal (in metres and inches), and mean illuminance and luminance for the
-lumens set above — for a flat screen with no ambient light.
+A standalone scratchpad for trying scenarios without moving the rig.
 
-Useful for a quick sanity check before committing to a lens.
+| Control | Meaning |
+| --- | --- |
+| **Signal** | Resolution preset: native or pixel-shift / 4K mode of the model selected in the Hardware Library pickers, 1920 x 1080, 1920 x 1200, 3840 x 2160, 3840 x 2400, 4096 x 2160, or custom. The image aspect is the signal's |
+| **Throw and Image** | Distance, throw ratio, width, height, diagonal. Edit one and the rest follow; distance is held unless you edit it, and editing distance holds the throw ratio |
+| **Lens Height AFF / Vertical Shift** | Image bottom and top above the floor for a level projector. Shift uses the add-on convention: fraction of the full image height, positive up, 0.5 puts the axis on the image edge |
+| **Check Against Screen** | Compares the image edges with a screen bottom edge and height, and gives the shift that lands the bottom edge |
+| **Viewer Distance** | Pixels per degree for that viewer; below 60 px/deg (20/20 acuity) the panel warns that pixel structure is visible. The 1-arcmin distance is where one pixel subtends one minute of arc |
+| **Projectors / Overlap** | Blended canvas: `N x res_x - (N - 1) x overlap_px` pixels, its width in mm and px/mm |
+
+Throw ratio and shift are checked against the lens selected in the pickers (or
+the applied lens) and warned about, never clamped. Brightness readouts assume a
+flat screen and no ambient light.
+
+**Scenarios.** Type a name and press **Save** to keep the current inputs. The
+compare table shows up to four saved scenarios side by side, around the active
+one. **Load** puts a scenario back into the calculator (as a custom
+resolution), **Remove** deletes it, and **CSV** exports every scenario, one row
+each, lengths in mm. Outputs are recomputed from the saved inputs, so the
+table, the CSV and the live calculator always agree.
+
+**Resolution data.** Library rows may carry `res_x`/`res_y` (native) and
+`addressable_res_x`/`addressable_res_y` (pixel-shift); CSV imports may add the
+same optional columns. A row without them plans at 1920 wide with the height
+from its aspect (16:10 gives 1920 x 1200) and is labelled as assumed.
 
 ---
 

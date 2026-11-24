@@ -76,7 +76,7 @@ resolve it.
 | **2. Projectors** | Set the lens and mount; watch the live array update |
 | **3. Analysis** | Tune the live coverage resolution and overlays |
 | **4. Report** | Read the results and copy them out |
-| **Lens Calculator** | Quick throw sums, independent of the scene |
+| **Image & Pixel Calculator** | Trial image size, resolution, pixel pitch, height and array scenarios without moving the rig |
 
 Full detail for every control is in the [user manual](index.md).
 
